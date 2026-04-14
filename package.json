@@ -1,0 +1,8 @@
+{
+  "name": "student-ai-recommender",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "openai": "^6.0.0"
+  }
+}
