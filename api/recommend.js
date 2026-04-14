@@ -311,19 +311,31 @@ Available programs:
 });
 
 const data = await response.json();
+
+// 🔴 IMPORTANT DEBUG LINE
+console.log("GROQ RAW RESPONSE:", data);
+
+// ✅ SAFE PARSE
+if (!data.choices || !data.choices.length) {
+  return res.status(500).json({
+    error: "Groq response invalid",
+    raw: data
+  });
+}
+
 const text = data.choices[0].message.content;
 
-    let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return res.status(500).json({
-        error: "GROQ did not return valid JSON",
-        raw_text: text
-      });
-    }
+let parsed;
+try {
+  parsed = JSON.parse(text);
+} catch {
+  return res.status(500).json({
+    error: "AI did not return valid JSON",
+    raw_text: text
+  });
+}
 
-    return res.status(200).json(parsed);
+return res.status(200).json(parsed);
   } catch (error) {
     return res.status(500).json({
       error: error.message || "Server error"
