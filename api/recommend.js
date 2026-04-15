@@ -562,7 +562,7 @@ function buildRecommendationResponse(bestRows, student, docsUsed) {
 
 export default async function handler(req, res) {
   const allowedOrigins = [
-    "https://tristar-education.myshopify.com"
+    "https://tsapply.online"
   ];
 
   const requestOrigin = req.headers.origin;
