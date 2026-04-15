@@ -168,8 +168,14 @@ function loadPrograms() {
       scholarship_tag: normalizeText(row.Scholarship_Tag),
       application_fee_tag: normalizeText(row.Application_Fee_Tag),
       tuition_usd: toNumber(row.Tuition_USD),
-      raw_title: normalizeText(row.Raw_Title),
-      raw_tags: normalizeText(row.Raw_Tags)
+
+      tuition_basis: normalizeText(row.Tuition_Basis),
+      duration_years_assumed: toNumber(row.Duration_Years_Assumed),
+      category_tier: normalizeText(row.Category_Tier),
+      ranking_band: normalizeText(row.Ranking_Band),
+
+      raw_title: normalizeText(row.Source_Raw_Title || row.Raw_Title),
+      raw_tags: normalizeText(row.Source_Raw_Tags || row.Raw_Tags)
     }))
     .filter((row) => {
       const level = safeLower(row.degree_level);
@@ -234,8 +240,10 @@ const knowledge = {
   programs: loadPrograms()
 };
 
-function categorizeUniversity(name) {
-  const n = safeLower(name);
+function categorizeUniversity(programRow) {
+  if (programRow.category_tier) return programRow.category_tier;
+
+  const n = safeLower(programRow.university);
 
   for (const item of knowledge.categories.top_tier) {
     if (safeLower(item) === n) return "Top Tier";
@@ -316,24 +324,27 @@ function programMatchScore(programRow, intendedProgram) {
   const targets = aliasTargets(intendedProgram);
   if (!targets.length) return 0;
 
-  const haystack = safeLower(
-    `${programRow.program_title} ${programRow.major_tag} ${programRow.speciality} ${programRow.raw_title} ${programRow.raw_tags}`
-  );
+  const title = safeLower(programRow.program_title);
+  const major = safeLower(programRow.major_tag);
+  const speciality = safeLower(programRow.speciality);
+  const haystack = `${title} ${major} ${speciality} ${safeLower(programRow.raw_title)} ${safeLower(programRow.raw_tags)}`;
 
   let score = 0;
 
   for (const target of targets) {
-    if (haystack.includes(target)) score += 30;
+    if (major.includes(target)) score += 20;
+    if (title.includes(target)) score += 18;
+    if (speciality.includes(target)) score += 8;
+    if (haystack.includes(target)) score += 4;
   }
 
-  if (safeLower(programRow.program_title).includes("phd")) score -= 1000;
-  if (safeLower(programRow.program_title).includes("master")) score -= 1000;
-  if (safeLower(programRow.program_title).includes("doctoral")) score -= 1000;
-  if (safeLower(programRow.program_title).includes("associate")) score -= 100;
+  if (title.includes("phd")) score -= 1000;
+  if (title.includes("master")) score -= 1000;
+  if (title.includes("doctoral")) score -= 1000;
+  if (title.includes("associate")) score -= 100;
 
   return score;
 }
-
 function rankingScore(university, rankingImportance) {
   if (safeLower(rankingImportance) !== "yes") return 0;
   const category = categorizeUniversity(university);
@@ -439,7 +450,7 @@ function buildQuestionResponse(missing, docsUploaded) {
 
 function scorePrograms(student) {
   const scored = knowledge.programs.map((row) => {
-    const category = categorizeUniversity(row.university);
+    const category = categorizeUniversity(row);
 
     let score = 0;
     score += categoryBaseScore(category);
@@ -524,7 +535,7 @@ function buildRecommendationResponse(bestRows, student, docsUsed) {
       university: row.university,
       program: row.program_title,
       category: row._category,
-      ranking_band: knowledge.ranking_overrides[row.university] || "Indicative only",
+      ranking_band: row.ranking_band || knowledge.ranking_overrides[row.university] || "Indicative only",
       tuition_estimate: row.tuition_usd ? `$${row.tuition_usd}/year` : "Ask counselor",
       living_cost_estimate: livingEstimate(student.lifestyle_preference),
       estimated_total_yearly_cost: row.tuition_usd
@@ -539,9 +550,12 @@ function buildRecommendationResponse(bestRows, student, docsUsed) {
         `Matched against budget, lifestyle, ranking, and scholarship preference.`
       ],
       notes: [
-        "Undergraduate Türkiye intake is Fall only.",
-        "Seat reservation deposits are commonly around $1,000, depending on the university."
-      ]
+  "Undergraduate Türkiye intake is Fall only.",
+  row.tuition_basis === "Annualized Estimate"
+    ? "Tuition shown here is an annualized estimate converted from a whole-program fee."
+    : "Tuition shown here is treated as an annual fee.",
+  "Seat reservation deposits are commonly around $1,000, depending on the university."
+]
     }))
   };
 }
