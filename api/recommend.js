@@ -323,12 +323,21 @@ if (!data.choices || !data.choices.length) {
   });
 }
 
-const text = data.choices[0].message.content;
+const text = data.choices[0]?.message?.content || "";
+
+// 🧠 Extract JSON from messy AI output
+function extractJSON(str) {
+  const match = str.match(/\{[\s\S]*\}/);
+  return match ? match[0] : null;
+}
+
+const jsonString = extractJSON(text);
 
 let parsed;
+
 try {
-  parsed = JSON.parse(text);
-} catch {
+  parsed = JSON.parse(jsonString);
+} catch (e) {
   return res.status(500).json({
     error: "AI did not return valid JSON",
     raw_text: text
