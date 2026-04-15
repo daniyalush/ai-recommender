@@ -276,67 +276,177 @@ function categoryBaseScore(category) {
   return scores[category] ?? 0;
 }
 
-function aliasTargets(input) {
+function parseProgramIntent(input) {
   const q = safeLower(input);
 
-  const aliases = {
-    "Business Administration": [
-      "business administration",
-      "bba",
-      "business",
-      "business management",
-      "management",
-      "international trade and business",
-      "international trade",
-      "economics and finance",
-      "economics",
-      "finance",
-      "management information systems",
-      "marketing"
-    ],
-    "Computer Engineering": [
-      "computer engineering",
-      "computer science",
-      "software engineering",
-      "software development",
-      "artificial intelligence",
-      "information systems",
-      "management information systems"
-    ],
-    "Psychology": ["psychology"],
-    "Medicine": ["medicine", "md"],
-    "Dentistry": ["dentistry", "bds"],
-    "Architecture": ["architecture", "interior architecture", "industrial design"],
-    "Nursing": ["nursing"],
-    "Economics": ["economics", "finance", "economics and finance", "international finance", "banking"]
+  const degree = {
+    wants_ba: /\bba\b|\bbachelor of arts\b/.test(q),
+    wants_bs: /\bbs\b|\bbsc\b|\bbachelor of science\b/.test(q),
+    wants_bba: /\bbba\b|\bbachelor of business administration\b/.test(q)
   };
 
-  for (const [label, vals] of Object.entries(aliases)) {
-    if (vals.some((v) => q.includes(v))) {
-      return vals;
+  let family = [];
+
+  if (
+    q.includes("computer science") ||
+    q.includes("cs") ||
+    q.includes("computer engineering")
+  ) {
+    family = [
+      "computer engineering",
+      "computer science",
+      "software engineering"
+    ];
+  } else if (
+    q.includes("electrical") ||
+    q.includes("electronics engineering") ||
+    q.includes("electrical & electronics")
+  ) {
+    family = [
+      "electrical & electronics engineering",
+      "electrical - electronics engineering",
+      "electrical electronics engineering"
+    ];
+  } else if (
+    q.includes("business administration") ||
+    q.includes("bba") ||
+    q === "business" ||
+    q.includes("management")
+  ) {
+    family = [
+      "business administration"
+    ];
+  } else if (
+    q.includes("economics") ||
+    q.includes("finance")
+  ) {
+    family = [
+      "economics",
+      "economics & finance",
+      "economics and finance",
+      "finance & banking",
+      "international trade & finance"
+    ];
+  } else if (q.includes("psychology")) {
+    family = ["psychology"];
+  } else if (q.includes("software")) {
+    family = ["software engineering", "software development"];
+  } else if (q.includes("data science")) {
+    family = ["data science", "data engineering", "analytics"];
+  }
+
+  return {
+    raw: q,
+    family,
+    ...degree
+  };
+}
+
+function titleDegreeMatch(programTitle, intent) {
+  const title = safeLower(programTitle);
+
+  if (intent.wants_bba) {
+    return title.includes("business administration");
+  }
+
+  if (intent.wants_bs) {
+    return (
+      title.includes("(bsc)") ||
+      title.includes("bachelor of science") ||
+      title.includes("bachelors of science")
+    );
+  }
+
+  if (intent.wants_ba) {
+    return (
+      title.includes("(ba)") ||
+      title.includes("bachelor of arts") ||
+      title.includes("bachelors of arts")
+    );
+  }
+
+  return true;
+}
+
+function strictProgramFilter(row, intendedProgram) {
+  const intent = parseProgramIntent(intendedProgram);
+
+  const title = safeLower(row.program_title);
+  const major = safeLower(row.major_tag);
+  const combined = `${title} ${major}`;
+
+  if (!titleDegreeMatch(row.program_title, intent)) {
+    return false;
+  }
+
+  if (intent.family.length) {
+    const positive = intent.family.some(term => combined.includes(term));
+    if (!positive) return false;
+  }
+
+  const hardNegatives = [
+    "first and emergency aid",
+    "comparative literature",
+    "political science",
+    "aviation management",
+    "anthropology",
+    "theatre",
+    "translation",
+    "gastronomy",
+    "history",
+    "philosophy",
+    "archaeology"
+  ];
+
+  if (intent.raw.includes("electrical")) {
+    if (!combined.includes("electrical")) return false;
+  }
+
+  if (
+    intent.raw.includes("cs") ||
+    intent.raw.includes("computer science") ||
+    intent.raw.includes("computer engineering")
+  ) {
+    if (
+      combined.includes("data science") ||
+      combined.includes("analytics")
+    ) {
+      return false;
     }
   }
 
-  return q ? [q] : [];
+  if (hardNegatives.some(term => combined.includes(term))) {
+    if (
+      intent.raw.includes("business") ||
+      intent.raw.includes("bba") ||
+      intent.raw.includes("cs") ||
+      intent.raw.includes("electrical")
+    ) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function programMatchScore(programRow, intendedProgram) {
-  const targets = aliasTargets(intendedProgram);
-  if (!targets.length) return 0;
-
+  const intent = parseProgramIntent(intendedProgram);
   const title = safeLower(programRow.program_title);
   const major = safeLower(programRow.major_tag);
   const speciality = safeLower(programRow.speciality);
-  const haystack = `${title} ${major} ${speciality} ${safeLower(programRow.raw_title)} ${safeLower(programRow.raw_tags)}`;
+  const haystack = `${title} ${major} ${speciality}`;
 
   let score = 0;
 
-  for (const target of targets) {
-    if (major.includes(target)) score += 20;
-    if (title.includes(target)) score += 18;
-    if (speciality.includes(target)) score += 8;
-    if (haystack.includes(target)) score += 4;
+  for (const target of intent.family) {
+    if (major.includes(target)) score += 30;
+    if (title.includes(target)) score += 25;
+    if (speciality.includes(target)) score += 10;
   }
+
+  if (intent.wants_bba && title.includes("business administration")) score += 20;
+  if (intent.wants_bs && (title.includes("(bsc)") || title.includes("bachelor of science") || title.includes("bachelors of science"))) score += 20;
+  if (intent.wants_ba && (title.includes("(ba)") || title.includes("bachelor of arts") || title.includes("bachelors of arts"))) score += 20;
 
   if (title.includes("phd")) score -= 1000;
   if (title.includes("master")) score -= 1000;
@@ -345,6 +455,7 @@ function programMatchScore(programRow, intendedProgram) {
 
   return score;
 }
+
 function rankingScore(university, rankingImportance) {
   if (safeLower(rankingImportance) !== "yes") return 0;
   const category = categorizeUniversity(university);
@@ -449,7 +560,13 @@ function buildQuestionResponse(missing, docsUploaded) {
 }
 
 function scorePrograms(student) {
-  const scored = knowledge.programs.map((row) => {
+  const filtered = knowledge.programs.filter(function(row) {
+    return strictProgramFilter(row, student.intended_program || "");
+  });
+
+  const pool = filtered.length ? filtered : knowledge.programs;
+
+  const scored = pool.map((row) => {
     const category = categorizeUniversity(row);
 
     let score = 0;
@@ -460,27 +577,6 @@ function scorePrograms(student) {
     score += scholarshipScore(row, student.scholarship_preference);
     score += lifestyleScore(row.university, student.lifestyle_preference);
     score += budgetScore(row, student.yearly_budget_total, student.lifestyle_preference);
-
-    if (safeLower(student.intended_program).includes("bba")) {
-      const hay = safeLower(`${row.program_title} ${row.major_tag} ${row.speciality}`);
-      if (
-        hay.includes("business administration") ||
-        hay.includes("international trade and business") ||
-        hay.includes("economics and finance") ||
-        hay.includes("management information systems") ||
-        hay.includes("marketing")
-      ) {
-        score += 20;
-      }
-
-      if (
-        hay.includes("comparative literature") ||
-        hay.includes("political science") ||
-        hay.includes("aviation management")
-      ) {
-        score -= 20;
-      }
-    }
 
     return {
       ...row,
@@ -496,7 +592,7 @@ function scorePrograms(student) {
 
   for (const row of scored) {
     if (finalRows.length >= 3) break;
-    if (row._score < 20) continue;
+    if (row._score < 15) continue;
 
     const uniKey = safeLower(row.university);
     if (seenUniversities.has(uniKey)) continue;
