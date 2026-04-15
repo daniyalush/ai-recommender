@@ -68,8 +68,28 @@ function mapProgramRows(rawRows) {
       ]);
 
       const program = getFirst(row, [
-        "Program", "PROGRAM", "program", "Programme", "PROGRAMME", "Major", "Department"
-      ]);
+  "Program_Title",
+  "Program",
+  "PROGRAM",
+  "program",
+  "Programme",
+  "PROGRAMME",
+  "Major",
+  "major",
+  "Department",
+  "department",
+  "Faculty / Program",
+  "Faculty/Program",
+  "Program Name",
+  "PROGRAM NAME",
+  "Undergraduate Program",
+  "Programs",
+  "PROGRAMS",
+  "Name",
+  "NAME",
+  "Title",
+  "TITLE"
+]);
 
       const language = getFirst(row, [
         "Language", "language", "Medium", "Instruction Language"
