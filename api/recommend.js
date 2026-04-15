@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import xlsx from "xlsx";
 import Busboy from "busboy";
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
@@ -29,335 +28,10 @@ function safeLower(value) {
 }
 
 function toNumber(value) {
-  if (value === null || value === undefined) return null;
+  if (value === null || value === undefined || value === "") return null;
   const cleaned = String(value).replace(/[^0-9.]/g, "");
   const num = parseFloat(cleaned);
   return Number.isFinite(num) ? num : null;
-}
-
-function getFirst(row, keys) {
-  for (const key of keys) {
-    if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== "") {
-      return row[key];
-    }
-  }
-  return "";
-}
-
-function sheetToRows(filePath) {
-  if (!fs.existsSync(filePath)) return [];
-  const workbook = xlsx.readFile(filePath);
-  const rows = [];
-
-  workbook.SheetNames.forEach((sheetName) => {
-    const sheet = workbook.Sheets[sheetName];
-    const json = xlsx.utils.sheet_to_json(sheet, { defval: "" });
-    json.forEach((row) => {
-      rows.push({ ...row, __sheet: sheetName, __file: path.basename(filePath) });
-    });
-  });
-
-  return rows;
-}
-
-function mapProgramRows(rawRows) {
-  return rawRows
-    .map((row) => {
-      const university = getFirst(row, [
-        "University", "university", "UNIVERSITY", "Institution", "institution"
-      ]);
-
-      const program = getFirst(row, [
-  "Program_Title",
-  "Program",
-  "PROGRAM",
-  "program",
-  "Programme",
-  "PROGRAMME",
-  "Major",
-  "major",
-  "Department",
-  "department",
-  "Faculty / Program",
-  "Faculty/Program",
-  "Program Name",
-  "PROGRAM NAME",
-  "Undergraduate Program",
-  "Programs",
-  "PROGRAMS",
-  "Name",
-  "NAME",
-  "Title",
-  "TITLE"
-]);
-
-      const language = getFirst(row, [
-        "Language", "language", "Medium", "Instruction Language"
-      ]);
-
-      const tuition = getFirst(row, [
-        "Tuition", "tuition", "Tuition Fee", "TUITION FEE / PER YEAR",
-        "Fee", "Annual Fee", "Price", "price"
-      ]);
-
-      const scholarship = getFirst(row, [
-        "Scholarship", "scholarship", "Scholarship %", "Scholarship Percentage", "Discount"
-      ]);
-
-      const rankingBand = getFirst(row, [
-        "Ranking", "ranking", "THE Ranking", "Ranking Band"
-      ]);
-
-      if (!university && !program) return null;
-
-      return {
-        university: normalizeText(university),
-        program: normalizeText(program),
-        language: normalizeText(language),
-        tuition: normalizeText(tuition),
-        scholarship: normalizeText(scholarship),
-        ranking_band: normalizeText(rankingBand),
-        source_file: row.__file || "",
-        source_sheet: row.__sheet || ""
-      };
-    })
-    .filter(Boolean);
-}
-
-function loadKnowledge() {
-  const knowledgeDir = path.join(process.cwd(), "knowledge");
-
-  const files = [
-    "Aydin 2026-2027 Tuition Fees.xlsx",
-    "Bilgi Fall 2026 Tuition Prices with Scholarship.xlsx",
-    "Istanbul Okan University International Student 2026-2027 Price List (1).xlsx",
-    "Istinye 2026-2027 Fall Undergraduate Programs.xlsx",
-    "Programs_structured.xlsx"
-  ];
-
-  const raw = files.flatMap((file) => sheetToRows(path.join(knowledgeDir, file)));
-  const programs = mapProgramRows(raw);
-
-  return {
-    programs,
-    categories: {
-      top_tier: ["Sabanci University", "Koc University"],
-      strong_mid_tier: [
-        "Ozyegin University",
-        "Kadir Has University",
-        "Istanbul Bilgi University",
-        "Bahcesehir University",
-        "Istinye University"
-      ],
-      budget_friendly: [
-        "Istanbul Medipol University",
-        "Isik University",
-        "TED University",
-        "Yasar University",
-        "Uskudar University",
-        "Istanbul Aydin University",
-        "Istanbul Okan University"
-      ],
-      extreme_budget: ["Beykoz University", "Kent University"]
-    },
-    ranking_overrides: {
-      "Sabanci University": "THE 351–400 band",
-      "Koc University": "THE 301–350 band",
-      "Kadir Has University": "THE 601–800 band",
-      "Ozyegin University": "THE 801–1000 band",
-      "Bahcesehir University": "THE 801–1000 band",
-      "Istanbul Medipol University": "THE 801–1000 band",
-      "Istanbul Bilgi University": "THE 1200+ band",
-      "TED University": "Limited ranking presence"
-    },
-    rules: {
-      country_scope: "Turkey only",
-      intake: "Fall only",
-      sat_policy: "SAT is not mandatory for most Turkish universities but may help with scholarships",
-      deposit: "Seat reservation deposit is usually around $1,000",
-      living_costs: {
-        dorm_total_year: "$4,400 to $8,000",
-        shared_apartment_total_year: "$6,400 to $10,000",
-        food_transport_month: "$300 to $500"
-      }
-    }
-  };
-}
-
-function categorizeUniversity(name, knowledge) {
-  const n = safeLower(name);
-
-  for (const item of knowledge.categories.top_tier) {
-    if (safeLower(item) === n) return "Top Tier";
-  }
-  for (const item of knowledge.categories.strong_mid_tier) {
-    if (safeLower(item) === n) return "Strong Mid-Tier";
-  }
-  for (const item of knowledge.categories.budget_friendly) {
-    if (safeLower(item) === n) return "Budget-Friendly";
-  }
-  for (const item of knowledge.categories.extreme_budget) {
-    if (safeLower(item) === n) return "Extreme Budget";
-  }
-
-  return "General";
-}
-
-function getCategoryPriority(category) {
-  const map = {
-    "Top Tier": 4,
-    "Strong Mid-Tier": 3,
-    "Budget-Friendly": 2,
-    "Extreme Budget": 1,
-    "General": 0
-  };
-  return map[category] ?? 0;
-}
-
-function estimateLiving(stylePref, knowledge) {
-  const pref = safeLower(stylePref);
-  if (pref.includes("campus")) return knowledge.rules.living_costs.dorm_total_year;
-  if (pref.includes("city")) return knowledge.rules.living_costs.shared_apartment_total_year;
-  return "$4,400 to $10,000";
-}
-
-function preferenceScore(row, student) {
-  let score = 0;
-
-  const uniPref = safeLower(student.university_preference);
-  const intended = safeLower(student.intended_program);
-  const uni = safeLower(row.university);
-  const program = safeLower(row.program);
-
-  if (uniPref && uni.includes(uniPref)) score += 5;
-  if (intended && program.includes(intended)) score += 6;
-
-  const aliases = {
-    "computer science": ["computer engineering", "software engineering", "artificial intelligence", "computer programming"],
-    "software engineering": ["software engineering", "computer engineering", "back-end software development"],
-    "artificial intelligence": ["artificial intelligence", "robotics", "computer engineering"],
-    "business": ["business administration", "management", "economics", "finance", "international trade"],
-    "psychology": ["psychology", "applied psychology", "clinical psychology"],
-    "medicine": ["medicine"],
-    "dentistry": ["dentistry"],
-    "nursing": ["nursing"],
-    "architecture": ["architecture", "interior architecture"],
-    "media": ["media", "communication", "journalism", "radio", "television", "visual communication"]
-  };
-
-  Object.entries(aliases).forEach(([key, vals]) => {
-    if (intended.includes(key) && vals.some((v) => program.includes(v))) {
-      score += 3;
-    }
-  });
-
-  return score;
-}
-
-function rankingScore(university, rankingImportance, knowledge) {
-  if (safeLower(rankingImportance) !== "yes") return 0;
-  return getCategoryPriority(categorizeUniversity(university, knowledge));
-}
-
-function scholarshipScore(row, scholarshipPreference) {
-  if (!safeLower(scholarshipPreference).includes("yes")) return 0;
-  const combined = safeLower(`${row.scholarship} ${row.tuition} ${row.university} ${row.program}`);
-  if (combined.includes("75") || combined.includes("60") || combined.includes("50") || combined.includes("scholar")) {
-    return 2;
-  }
-  return 0;
-}
-
-function lifestyleScore(university, stylePref) {
-  const pref = safeLower(stylePref);
-  const uni = safeLower(university);
-
-  const campusBased = ["sabanci", "ozyegin", "isik"];
-  const cityBased = ["bilgi", "kadir has", "bahcesehir", "medipol", "aydin", "okan", "uskudar", "istinye"];
-
-  if (pref.includes("campus")) {
-    return campusBased.some((x) => uni.includes(x)) ? 2 : 0;
-  }
-
-  if (pref.includes("city")) {
-    return cityBased.some((x) => uni.includes(x)) ? 2 : 0;
-  }
-
-  return 0;
-}
-
-function budgetFitScore(tuitionValue, budgetValue) {
-  if (!budgetValue || !tuitionValue) return 0;
-  if (tuitionValue <= budgetValue * 0.65) return 3;
-  if (tuitionValue <= budgetValue * 0.85) return 2;
-  if (tuitionValue <= budgetValue) return 1;
-  return -2;
-}
-
-function inferFromDocs(docText) {
-  const text = safeLower(docText);
-
-  const inference = {
-    intended_program: "",
-    education_system: "",
-    grades_profile: "",
-    english_test: "",
-    english_score: "",
-    sat_score: ""
-  };
-
-  if (text.includes("a level") || text.includes("as level")) inference.education_system = "A Levels";
-  if (text.includes("o level")) inference.education_system = inference.education_system || "O Levels";
-  if (text.includes("fsc")) inference.education_system = "FSC";
-  if (text.includes("ib")) inference.education_system = "IB";
-
-  if (text.includes("computer engineering")) inference.intended_program = "Computer Engineering";
-  else if (text.includes("software engineering")) inference.intended_program = "Software Engineering";
-  else if (text.includes("computer science")) inference.intended_program = "Computer Science";
-  else if (text.includes("artificial intelligence")) inference.intended_program = "Artificial Intelligence";
-  else if (text.includes("business administration")) inference.intended_program = "Business";
-  else if (text.includes("psychology")) inference.intended_program = "Psychology";
-  else if (text.includes("medicine")) inference.intended_program = "Medicine";
-  else if (text.includes("dentistry")) inference.intended_program = "Dentistry";
-
-  const ieltsMatch = docText.match(/IELTS[^0-9]*([0-9](?:\.[0-9])?)/i);
-  if (ieltsMatch) {
-    inference.english_test = "IELTS";
-    inference.english_score = ieltsMatch[1];
-  }
-
-  const satMatch = docText.match(/SAT[^0-9]*([0-9]{3,4})/i);
-  if (satMatch) {
-    inference.sat_score = satMatch[1];
-  }
-
-  inference.grades_profile = docText.slice(0, 800);
-
-  return inference;
-}
-
-async function extractTextFromFile(file) {
-  const name = safeLower(file.filename);
-
-  try {
-    if (name.endsWith(".pdf")) {
-      const parsed = await pdfParse(file.buffer);
-      return parsed.text || "";
-    }
-
-    if (name.endsWith(".docx")) {
-      const parsed = await mammoth.extractRawText({ buffer: file.buffer });
-      return parsed.value || "";
-    }
-
-    if (name.endsWith(".txt")) {
-      return file.buffer.toString("utf8");
-    }
-
-    return "";
-  } catch {
-    return "";
-  }
 }
 
 function parseMultipart(req) {
@@ -390,7 +64,367 @@ function parseMultipart(req) {
   });
 }
 
-function buildQuestionResponse(body, missing, docsUploaded) {
+async function extractTextFromFile(file) {
+  const name = safeLower(file.filename);
+
+  try {
+    if (name.endsWith(".pdf")) {
+      const parsed = await pdfParse(file.buffer);
+      return parsed.text || "";
+    }
+
+    if (name.endsWith(".docx")) {
+      const parsed = await mammoth.extractRawText({ buffer: file.buffer });
+      return parsed.value || "";
+    }
+
+    if (name.endsWith(".txt")) {
+      return file.buffer.toString("utf8");
+    }
+
+    return "";
+  } catch {
+    return "";
+  }
+}
+
+function inferFromDocs(docText) {
+  const text = safeLower(docText);
+
+  const inferred = {
+    education_system: "",
+    intended_program: "",
+    grades_profile: "",
+    english_test: "",
+    english_score: "",
+    sat_score: ""
+  };
+
+  if (text.includes("a level") || text.includes("as level")) inferred.education_system = "A Levels";
+  else if (text.includes("o level")) inferred.education_system = "O/A Levels";
+  else if (text.includes("fsc")) inferred.education_system = "FSC";
+  else if (text.includes("ib")) inferred.education_system = "IB";
+
+  const majorPatterns = [
+    ["business administration", "Business Administration"],
+    ["bba", "Business Administration"],
+    ["business", "Business Administration"],
+    ["management", "Business Administration"],
+    ["economics", "Economics"],
+    ["finance", "Economics and Finance"],
+    ["international trade", "International Trade and Business"],
+    ["computer science", "Computer Engineering"],
+    ["computer engineering", "Computer Engineering"],
+    ["software engineering", "Software Engineering"],
+    ["artificial intelligence", "Artificial Intelligence Engineering"],
+    ["psychology", "Psychology"],
+    ["medicine", "Medicine"],
+    ["dentistry", "Dentistry"],
+    ["nursing", "Nursing"],
+    ["architecture", "Architecture"]
+  ];
+
+  for (const [pattern, label] of majorPatterns) {
+    if (text.includes(pattern)) {
+      inferred.intended_program = label;
+      break;
+    }
+  }
+
+  const ieltsMatch = docText.match(/IELTS[^0-9]*([0-9](?:\.[0-9])?)/i);
+  if (ieltsMatch) {
+    inferred.english_test = "IELTS";
+    inferred.english_score = ieltsMatch[1];
+  }
+
+  const satMatch = docText.match(/SAT[^0-9]*([0-9]{3,4})/i);
+  if (satMatch) {
+    inferred.sat_score = satMatch[1];
+  }
+
+  inferred.grades_profile = normalizeText(docText).slice(0, 800);
+
+  return inferred;
+}
+
+function loadPrograms() {
+  const filePath = path.join(process.cwd(), "knowledge", "Programs.json");
+  if (!fs.existsSync(filePath)) {
+    throw new Error("Programs.json not found in knowledge folder");
+  }
+
+  const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+
+  return raw
+    .map((row) => ({
+      program_title: normalizeText(row.Program_Title),
+      major_tag: normalizeText(row.Major_Tag),
+      degree_level: normalizeText(row.Degree_Level),
+      speciality: normalizeText(row.Speciality),
+      university: normalizeText(row.University),
+      city: normalizeText(row.City),
+      campus_style: normalizeText(row.Campus_Style),
+      intake: normalizeText(row.Intake),
+      scholarship_tag: normalizeText(row.Scholarship_Tag),
+      application_fee_tag: normalizeText(row.Application_Fee_Tag),
+      tuition_usd: toNumber(row.Tuition_USD),
+      raw_title: normalizeText(row.Raw_Title),
+      raw_tags: normalizeText(row.Raw_Tags)
+    }))
+    .filter((row) => {
+      const level = safeLower(row.degree_level);
+      return row.university && row.program_title && level.includes("bachelor");
+    });
+}
+
+const knowledge = {
+  rules: {
+    country_scope: "Turkey only",
+    intake: "Fall only",
+    sat_policy: "SAT is not mandatory for most Turkish universities but may help scholarships",
+    deposit: "Seat reservation deposit is usually around $1,000",
+    living_costs: {
+      dorm_total_year: "$4,400 to $8,000",
+      shared_apartment_total_year: "$6,400 to $10,000",
+      food_transport_month: "$300 to $500"
+    }
+  },
+  categories: {
+    top_tier: ["Sabanci University", "Koc University"],
+    strong_mid_tier: [
+      "Ozyegin University",
+      "Kadir Has University",
+      "Istanbul Bilgi University",
+      "Bahcesehir University (BAU)",
+      "Bahcesehir University",
+      "Istinye University"
+    ],
+    budget_friendly: [
+      "Istanbul Medipol University",
+      "Isik University",
+      "TED University",
+      "Yasar University",
+      "Uskudar University",
+      "Istanbul Aydin University"
+    ],
+    non_preferred: [
+      "Istanbul Okan University",
+      "Altinbas University"
+    ],
+    extreme_budget: [
+      "Beykoz University",
+      "Kent University",
+      "Istanbul Kent University",
+      "beykent University",
+      "Beykent University",
+      "Atlas University"
+    ]
+  },
+  ranking_overrides: {
+    "Sabanci University": "THE 351–400 band",
+    "Koc University": "THE 301–350 band",
+    "Kadir Has University": "THE 601–800 band",
+    "Ozyegin University": "THE 801–1000 band",
+    "Bahcesehir University (BAU)": "THE 801–1000 band",
+    "Bahcesehir University": "THE 801–1000 band",
+    "Istanbul Medipol University": "THE 801–1000 band",
+    "Istanbul Bilgi University": "THE 1200+ band",
+    "TED University": "Limited ranking presence"
+  },
+  programs: loadPrograms()
+};
+
+function categorizeUniversity(name) {
+  const n = safeLower(name);
+
+  for (const item of knowledge.categories.top_tier) {
+    if (safeLower(item) === n) return "Top Tier";
+  }
+  for (const item of knowledge.categories.strong_mid_tier) {
+    if (safeLower(item) === n) return "Strong Mid-Tier";
+  }
+  for (const item of knowledge.categories.budget_friendly) {
+    if (safeLower(item) === n) return "Budget-Friendly";
+  }
+  for (const item of knowledge.categories.non_preferred) {
+    if (safeLower(item) === n) return "Non-Preferred";
+  }
+  for (const item of knowledge.categories.extreme_budget) {
+    if (safeLower(item) === n) return "Extreme Budget";
+  }
+
+  return "General";
+}
+
+function categoryBaseScore(category) {
+  const scores = {
+    "Top Tier": 40,
+    "Strong Mid-Tier": 30,
+    "Budget-Friendly": 20,
+    "General": 10,
+    "Extreme Budget": 5,
+    "Non-Preferred": -10
+  };
+  return scores[category] ?? 0;
+}
+
+function aliasTargets(input) {
+  const q = safeLower(input);
+
+  const aliases = {
+    "Business Administration": [
+      "business administration",
+      "bba",
+      "business",
+      "business management",
+      "management",
+      "international trade and business",
+      "international trade",
+      "economics and finance",
+      "economics",
+      "finance",
+      "management information systems",
+      "marketing"
+    ],
+    "Computer Engineering": [
+      "computer engineering",
+      "computer science",
+      "software engineering",
+      "software development",
+      "artificial intelligence",
+      "information systems",
+      "management information systems"
+    ],
+    "Psychology": ["psychology"],
+    "Medicine": ["medicine", "md"],
+    "Dentistry": ["dentistry", "bds"],
+    "Architecture": ["architecture", "interior architecture", "industrial design"],
+    "Nursing": ["nursing"],
+    "Economics": ["economics", "finance", "economics and finance", "international finance", "banking"]
+  };
+
+  for (const [label, vals] of Object.entries(aliases)) {
+    if (vals.some((v) => q.includes(v))) {
+      return vals;
+    }
+  }
+
+  return q ? [q] : [];
+}
+
+function programMatchScore(programRow, intendedProgram) {
+  const targets = aliasTargets(intendedProgram);
+  if (!targets.length) return 0;
+
+  const haystack = safeLower(
+    `${programRow.program_title} ${programRow.major_tag} ${programRow.speciality} ${programRow.raw_title} ${programRow.raw_tags}`
+  );
+
+  let score = 0;
+
+  for (const target of targets) {
+    if (haystack.includes(target)) score += 30;
+  }
+
+  if (safeLower(programRow.program_title).includes("phd")) score -= 1000;
+  if (safeLower(programRow.program_title).includes("master")) score -= 1000;
+  if (safeLower(programRow.program_title).includes("doctoral")) score -= 1000;
+  if (safeLower(programRow.program_title).includes("associate")) score -= 100;
+
+  return score;
+}
+
+function rankingScore(university, rankingImportance) {
+  if (safeLower(rankingImportance) !== "yes") return 0;
+  const category = categorizeUniversity(university);
+  if (category === "Top Tier") return 12;
+  if (category === "Strong Mid-Tier") return 8;
+  if (category === "Budget-Friendly") return 4;
+  return 0;
+}
+
+function scholarshipScore(programRow, scholarshipPreference) {
+  if (safeLower(scholarshipPreference) !== "yes") return 0;
+  return safeLower(programRow.scholarship_tag).includes("yes") ? 6 : 0;
+}
+
+function lifestyleScore(university, lifestylePreference) {
+  const pref = safeLower(lifestylePreference);
+  const uni = safeLower(university);
+
+  const campusUnis = ["sabanci university", "ozyegin university", "isik university", "koc university"];
+  const cityUnis = [
+    "istanbul bilgi university",
+    "kadir has university",
+    "bahcesehir university",
+    "bahcesehir university (bau)",
+    "istanbul medipol university",
+    "istanbul aydin university",
+    "istanbul okan university",
+    "atlas university",
+    "beykent university",
+    "beykent university",
+    "istanbul kent university",
+    "uskudar university",
+    "istinye university"
+  ];
+
+  if (pref.includes("campus")) {
+    return campusUnis.some((x) => uni.includes(x)) ? 8 : 0;
+  }
+
+  if (pref.includes("city")) {
+    return cityUnis.some((x) => uni.includes(x)) ? 8 : 0;
+  }
+
+  return 0;
+}
+
+function budgetScore(programRow, yearlyBudgetTotal, lifestylePreference) {
+  const budget = toNumber(yearlyBudgetTotal);
+  if (!budget || !programRow.tuition_usd) return 0;
+
+  const livingLow = safeLower(lifestylePreference).includes("campus") ? 4400 : 6400;
+  const estimatedTotal = programRow.tuition_usd + livingLow;
+
+  if (estimatedTotal <= budget * 0.8) return 10;
+  if (estimatedTotal <= budget) return 6;
+  if (estimatedTotal <= budget * 1.15) return 2;
+  return -8;
+}
+
+function preferenceUniversityScore(university, universityPreference) {
+  const pref = safeLower(universityPreference);
+  if (!pref) return 0;
+  return safeLower(university).includes(pref) ? 12 : 0;
+}
+
+function docsOnlyMissingFields(merged) {
+  return [
+    { key: "ranking_importance", label: "Is university ranking an important factor for you?" },
+    { key: "yearly_budget_total", label: "What is your approximate yearly budget for tuition and living?" },
+    { key: "scholarship_preference", label: "Are you specifically looking for high scholarships?" },
+    { key: "lifestyle_preference", label: "Do you prefer a city-center university experience or a campus-based environment?" },
+    { key: "candidate_type", label: "Are you a private candidate or applying through a school?" }
+  ].filter((f) => !String(merged[f.key] || "").trim());
+}
+
+function fullMissingFields(merged) {
+  return [
+    { key: "university_preference", label: "Do you have any specific university preference?" },
+    { key: "ranking_importance", label: "Is university ranking an important factor for you?" },
+    { key: "yearly_budget_total", label: "What is your approximate yearly budget for tuition and living?" },
+    { key: "scholarship_preference", label: "Are you specifically looking for high scholarships?" },
+    { key: "lifestyle_preference", label: "Do you prefer a city-center university experience or a campus-based environment?" },
+    { key: "education_system", label: "What education system are you applying with?" },
+    { key: "sat_score", label: "Do you have an SAT score? If yes, what score?" },
+    { key: "intended_program", label: "What is your intended program/major?" },
+    { key: "grades_profile", label: "Are you in final year or already completed? Share grades/predicted." },
+    { key: "candidate_type", label: "Are you a private candidate or applying through a school?" }
+  ].filter((f) => !String(merged[f.key] || "").trim());
+}
+
+function buildQuestionResponse(missing, docsUploaded) {
   return {
     mode: "questions",
     country_scope: "Turkey only",
@@ -403,89 +437,114 @@ function buildQuestionResponse(body, missing, docsUploaded) {
   };
 }
 
-function scorePrograms(programs, student, knowledge) {
-  const budget = toNumber(student.yearly_budget_total);
-
-  const scored = programs.map((row) => {
-    const tuitionValue = toNumber(row.tuition);
-    const category = categorizeUniversity(row.university, knowledge);
+function scorePrograms(student) {
+  const scored = knowledge.programs.map((row) => {
+    const category = categorizeUniversity(row.university);
 
     let score = 0;
-    score += preferenceScore(row, student);
-    score += rankingScore(row.university, student.ranking_importance, knowledge);
+    score += categoryBaseScore(category);
+    score += programMatchScore(row, student.intended_program);
+    score += preferenceUniversityScore(row.university, student.university_preference);
+    score += rankingScore(row.university, student.ranking_importance);
     score += scholarshipScore(row, student.scholarship_preference);
     score += lifestyleScore(row.university, student.lifestyle_preference);
-    score += budgetFitScore(tuitionValue, budget);
-    score += getCategoryPriority(category);
+    score += budgetScore(row, student.yearly_budget_total, student.lifestyle_preference);
+
+    if (safeLower(student.intended_program).includes("bba")) {
+      const hay = safeLower(`${row.program_title} ${row.major_tag} ${row.speciality}`);
+      if (
+        hay.includes("business administration") ||
+        hay.includes("international trade and business") ||
+        hay.includes("economics and finance") ||
+        hay.includes("management information systems") ||
+        hay.includes("marketing")
+      ) {
+        score += 20;
+      }
+
+      if (
+        hay.includes("comparative literature") ||
+        hay.includes("political science") ||
+        hay.includes("aviation management")
+      ) {
+        score -= 20;
+      }
+    }
 
     return {
       ...row,
-      _score: score,
-      _category: category
+      _category: category,
+      _score: score
     };
   });
 
   scored.sort((a, b) => b._score - a._score);
 
-  const seen = new Set();
+  const seenUniversities = new Set();
   const finalRows = [];
 
   for (const row of scored) {
-    const key = `${safeLower(row.university)}|${safeLower(row.program)}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      finalRows.push(row);
-    }
+    if (finalRows.length >= 3) break;
+    if (row._score < 20) continue;
+
+    const uniKey = safeLower(row.university);
+    if (seenUniversities.has(uniKey)) continue;
+
+    seenUniversities.add(uniKey);
+    finalRows.push(row);
   }
 
-  return finalRows.slice(0, 3);
+  return finalRows;
 }
 
-function buildRecommendationResponse(bestRows, student, knowledge, docsUsed) {
-  const living = estimateLiving(student.lifestyle_preference, knowledge);
+function livingEstimate(lifestylePreference) {
+  const pref = safeLower(lifestylePreference);
+  if (pref.includes("campus")) return knowledge.rules.living_costs.dorm_total_year;
+  if (pref.includes("city")) return knowledge.rules.living_costs.shared_apartment_total_year;
+  return "$4,400 to $10,000";
+}
 
+function buildRecommendationResponse(bestRows, student, docsUsed) {
   return {
     mode: "recommendations",
     country_scope: "Turkey only",
     docs_used: docsUsed,
     summary: {
-      budget_comment: student.yearly_budget_total
-        ? `Recommendations were aligned around an approximate yearly tuition + living budget of ${student.yearly_budget_total}.`
-        : "Budget was inferred or not fully specified.",
+      budget_comment: `Recommendations were matched against an approximate yearly tuition + living budget of ${student.yearly_budget_total || "not fully specified"}.`,
       ranking_comment: safeLower(student.ranking_importance) === "yes"
-        ? "Ranking-sensitive options were prioritized first."
+        ? "Ranking-sensitive options were prioritized."
         : "Ranking was not treated as the primary driver.",
-      scholarship_comment: "Scholarships are positioned as estimated possibilities, not guarantees.",
+      scholarship_comment: "Scholarships are shown as possible/estimated, not guaranteed.",
       lifestyle_comment: student.lifestyle_preference
         ? `Lifestyle preference considered: ${student.lifestyle_preference}.`
-        : "Lifestyle preference was inferred or not fully specified.",
-      intake_comment: "For undergraduate Turkey admissions, the relevant intake is Fall only."
+        : "Lifestyle preference was not fully specified.",
+      intake_comment: "For undergraduate Türkiye admissions, the intake is Fall only."
     },
     recommendations: bestRows.map((row) => ({
       university: row.university,
-      program: row.program,
+      program: row.program_title,
       category: row._category,
-      ranking_band: knowledge.ranking_overrides[row.university] || row.ranking_band || "Indicative only",
-      tuition_estimate: row.tuition || "Ask counselor",
-      living_cost_estimate: living,
-      estimated_total_yearly_cost: "Estimate depends on tuition + living style",
-      scholarship_positioning: row.scholarship
-        ? `Possible scholarship/discount indicator from source sheet: ${row.scholarship}`
-        : "Possible depending on profile and university policy.",
+      ranking_band: knowledge.ranking_overrides[row.university] || "Indicative only",
+      tuition_estimate: row.tuition_usd ? `$${row.tuition_usd}/year` : "Ask counselor",
+      living_cost_estimate: livingEstimate(student.lifestyle_preference),
+      estimated_total_yearly_cost: row.tuition_usd
+        ? `Approx. $${row.tuition_usd} tuition + living depending on lifestyle`
+        : "Depends on tuition + living style",
+      scholarship_positioning: safeLower(row.scholarship_tag).includes("yes")
+        ? "Scholarship/discount may be possible depending on profile and university policy."
+        : "Scholarship may still be possible depending on profile and university policy.",
       why_this_fits: [
-        `Matches or is close to the student's intended program.`,
-        `Fits the Turkey counseling category: ${row._category}.`,
-        `Selected using budget, lifestyle, scholarship, and ranking preference logic.`
+        `Strong match for the intended program: ${student.intended_program}.`,
+        `Selected within the ${row._category} category based on TriStar counseling positioning.`,
+        `Matched against budget, lifestyle, ranking, and scholarship preference.`
       ],
       notes: [
-        "Undergraduate Turkey intake is Fall only.",
-        "Scholarships should be treated as estimated possibilities, not guaranteed."
+        "Undergraduate Türkiye intake is Fall only.",
+        "Seat reservation deposits are commonly around $1,000, depending on the university."
       ]
     }))
   };
 }
-
-const knowledgeCache = loadKnowledge();
 
 export default async function handler(req, res) {
   const allowedOrigins = [
@@ -504,7 +563,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       country_scope: "Turkey only",
-      loaded_program_rows: knowledgeCache.programs.length
+      loaded_program_rows: knowledge.programs.length
     });
   }
 
@@ -513,9 +572,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const contentType = req.headers["content-type"] || "";
     let body = {};
     let files = [];
+
+    const contentType = req.headers["content-type"] || "";
 
     if (contentType.includes("multipart/form-data")) {
       const parsed = await parseMultipart(req);
@@ -524,9 +584,7 @@ export default async function handler(req, res) {
     } else {
       await new Promise((resolve, reject) => {
         let raw = "";
-        req.on("data", (chunk) => {
-          raw += chunk;
-        });
+        req.on("data", (chunk) => { raw += chunk; });
         req.on("end", () => {
           try {
             body = raw ? JSON.parse(raw) : {};
@@ -552,54 +610,40 @@ export default async function handler(req, res) {
     const merged = {
       ...body,
       education_system: body.education_system || inferred.education_system || "",
-      intended_program: body.intended_program || inferred.intended_program || body.course_interest || "",
+      intended_program: body.intended_program || body.course_interest || inferred.intended_program || "",
       grades_profile: body.grades_profile || inferred.grades_profile || "",
       sat_score: body.sat_score || inferred.sat_score || "",
       english_test: body.english_test || inferred.english_test || "",
       english_score: body.english_score || inferred.english_score || ""
     };
 
-    const profilingFields = [
-      { key: "university_preference", label: "Do you have any specific university preference?" },
-      { key: "ranking_importance", label: "Is university ranking an important factor for you?" },
-      { key: "yearly_budget_total", label: "What is your approximate yearly budget for tuition and living?" },
-      { key: "scholarship_preference", label: "Are you specifically looking for high scholarships?" },
-      { key: "lifestyle_preference", label: "Do you prefer a city-center university experience or a campus-based environment?" },
-      { key: "education_system", label: "What education system are you applying with?" },
-      { key: "sat_score", label: "Do you have an SAT score? If yes, what score?" },
-      { key: "intended_program", label: "What is your intended program/major?" },
-      { key: "grades_profile", label: "Are you in final year or already completed? Share grades/predicted." },
-      { key: "candidate_type", label: "Are you a private candidate or applying through a school?" }
-    ];
-
     const docsOnlyMode = files.length > 0 && Object.values(body).every((v) => !String(v || "").trim());
 
-    if (docsOnlyMode) {
-      const docsMissing = [
-        { key: "ranking_importance", label: "Is university ranking an important factor for you?" },
-        { key: "yearly_budget_total", label: "What is your approximate yearly budget for tuition and living?" },
-        { key: "scholarship_preference", label: "Are you specifically looking for high scholarships?" },
-        { key: "lifestyle_preference", label: "Do you prefer a city-center university experience or a campus-based environment?" },
-        { key: "candidate_type", label: "Are you a private candidate or applying through a school?" }
-      ].filter((f) => !String(merged[f.key] || "").trim());
+    const missing = docsOnlyMode ? docsOnlyMissingFields(merged) : fullMissingFields(merged);
 
-      if (docsMissing.length > 0) {
-        return res.status(200).json(buildQuestionResponse(merged, docsMissing, true));
-      }
-    } else {
-      const missing = profilingFields.filter(
-        (f) => !String(merged[f.key] || "").trim()
-      );
-
-      if (missing.length > 0) {
-        return res.status(200).json(buildQuestionResponse(merged, missing, files.length > 0));
-      }
+    if (missing.length > 0) {
+      return res.status(200).json(buildQuestionResponse(missing, files.length > 0));
     }
 
-    const bestRows = scorePrograms(knowledgeCache.programs, merged, knowledgeCache);
-    const response = buildRecommendationResponse(bestRows, merged, knowledgeCache, files.length > 0);
+    const bestRows = scorePrograms(merged);
 
-    return res.status(200).json(response);
+    if (!bestRows.length) {
+      return res.status(200).json({
+        mode: "recommendations",
+        country_scope: "Turkey only",
+        docs_used: files.length > 0,
+        summary: {
+          budget_comment: "No strong match was found with the current inputs.",
+          ranking_comment: "",
+          scholarship_comment: "",
+          lifestyle_comment: "",
+          intake_comment: "For undergraduate Türkiye admissions, the intake is Fall only."
+        },
+        recommendations: []
+      });
+    }
+
+    return res.status(200).json(buildRecommendationResponse(bestRows, merged, files.length > 0));
   } catch (error) {
     return res.status(500).json({
       error: error.message || "Server error"
