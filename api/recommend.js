@@ -554,6 +554,7 @@ function loadPrograms() {
   if (!fs.existsSync(datasetPath)) {
     throw new Error("Programs dataset not found at knowledge/Programs.json");
   }
+
   const raw = JSON.parse(fs.readFileSync(datasetPath, "utf8"));
   return raw.map((row) => ({
     program_title: normalizeText(row.Program_Title),
@@ -678,18 +679,28 @@ async function uploadFileToHubSpot(file) {
   form.append("file", new Blob([file.buffer], { type: file.mimeType }), file.filename);
   form.append("fileName", file.filename);
   form.append("options", JSON.stringify({ access: "PRIVATE" }));
+
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN || process.env.HUBSPOT_TOKEN;
   const response = await fetch(`${HUBSPOT_BASE}/files/v3/files`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form,
   });
+
   const text = await response.text();
   let data = {};
-  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
-  if (!response.ok) throw new Error(data.message || `HubSpot file upload failed: ${response.status}`);
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { raw: text };
+  }
+
+  if (!response.ok) {
+    throw new Error(data.message || `HubSpot file upload failed: ${response.status}`);
+  }
+
   return {
-    id: data.id || data.objects?.[0]?.id,
+    id: String(data.id || data.objects?.[0]?.id || ""),
     url: data.url || data.defaultHostingUrl || data.objects?.[0]?.url || "",
     name: file.filename,
     fieldname: file.fieldname,
@@ -725,13 +736,12 @@ async function listAssociationTypeId(fromObjectType, toObjectType) {
 }
 
 async function createHubSpotNoteForContact(contactId, bodyText) {
-  const associationTypeId = await listAssociationTypeId("notes", "contacts");
   await hubspotRequest("/crm/v3/objects/notes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       properties: {
-        hs_timestamp: nowIso(),
+        hs_timestamp: new Date().toISOString(),
         hs_note_body: bodyText,
       },
       associations: [
@@ -740,14 +750,17 @@ async function createHubSpotNoteForContact(contactId, bodyText) {
           types: [
             {
               associationCategory: "HUBSPOT_DEFINED",
-              associationTypeId: Number(associationTypeId),
-            },
-          ],
-        },
-      ],
+              associationTypeId: 202
+            }
+          ]
+        }
+      ]
     }),
   });
+  await createHubSpotNoteForContact(contactId, advisorNote);
+  console.log("HubSpot note created for contact", contactId);
 }
+
 
 async function openaiRequest(body) {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -985,18 +998,26 @@ async function handleFinalSubmit(fields, files) {
 
   const patchProps = { [HUBSPOT_PROP.source_new]: "TED DIRECT 2024" };
 
-  const firstUrl = (field) => (uploaded.find((x) => x.fieldname === field)?.url || "");
-  patchProps[HUBSPOT_PROP.passport_first_page] = firstUrl("passport_first_page") || undefined;
-  patchProps[HUBSPOT_PROP.student_picture] = firstUrl("student_picture") || undefined;
-  patchProps[HUBSPOT_PROP.high_school_transcripts] = uploaded.filter((x) => x.fieldname === "high_school_transcripts").map((x) => x.url).filter(Boolean).join("\n") || undefined;
-  patchProps[HUBSPOT_PROP.entrance_exam] = firstUrl("entrance_exam") || undefined;
-  patchProps[HUBSPOT_PROP.english_exam] = firstUrl("english_exam") || undefined;
-  patchProps[HUBSPOT_PROP.personal_statement] = firstUrl("personal_statement") || undefined;
+const firstFileId = (field) => (uploaded.find((x) => x.fieldname === field)?.id || "");
+patchProps[HUBSPOT_PROP.passport_first_page] = firstFileId("passport_first_page") || undefined;
+patchProps[HUBSPOT_PROP.student_picture] = firstFileId("student_picture") || undefined;
+patchProps[HUBSPOT_PROP.high_school_transcripts] = uploaded
+  .filter((x) => x.fieldname === "high_school_transcripts")
+  .map((x) => x.id)
+  .filter(Boolean)
+  .join(";") || undefined;
+patchProps[HUBSPOT_PROP.entrance_exam] = firstFileId("entrance_exam") || undefined;
+patchProps[HUBSPOT_PROP.english_exam] = firstFileId("english_exam") || undefined;
+patchProps[HUBSPOT_PROP.personal_statement] = firstFileId("personal_statement") || undefined;
 
-  const supportUrls = uploaded.filter((x) => x.fieldname === "supporting_documents").map((x) => x.url).filter(Boolean);
-  HUBSPOT_PROP.additional_docs.forEach((prop, index) => {
-    if (supportUrls[index]) patchProps[prop] = supportUrls[index];
-  });
+const supportFileIds = uploaded
+  .filter((x) => x.fieldname === "supporting_documents")
+  .map((x) => x.id)
+  .filter(Boolean);
+
+HUBSPOT_PROP.additional_docs.forEach((prop, index) => {
+  if (supportFileIds[index]) patchProps[prop] = supportFileIds[index];
+});
 
   await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
     method: "PATCH",
