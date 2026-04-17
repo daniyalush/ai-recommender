@@ -15,8 +15,8 @@ const ALLOWED_ORIGINS = [
 "https://tsapply.online",
 ];
 
-const HUBSPOT_BASE = "[https://api.hubapi.com](https://api.hubapi.com)";
-const OPENAI_BASE = "[https://api.openai.com/v1](https://api.openai.com/v1)";
+const HUBSPOT_BASE = "https://api.hubapi.com";
+const OPENAI_BASE = "https://api.openai.com/v1";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1";
 const SOURCE_NEW_VALUE = "TED DIRECT 2024";
 const NOTE_TO_CONTACT_ASSOCIATION_TYPE_ID = 202;
