@@ -1219,7 +1219,7 @@ async function handleTogglePreferredProgram(body) {
 
 async function handleFinalSubmit(fields, files) {
   const groupedFiles = groupFilesByField(files);
-  validateRequiredFinalFields(fields, groupedFiles);
+  // validateRequiredFinalFields(fields, groupedFiles);
 
   const existing = await findContactByEmail(fields.email, [HUBSPOT_PROP.intended_program_single_field]);
   const existingMajors = existing?.properties?.[HUBSPOT_PROP.intended_program_single_field] || "";
@@ -1228,37 +1228,47 @@ async function handleFinalSubmit(fields, files) {
   const contactId = contact.id;
 
   const uploaded = [];
-  for (const file of files) {
-    const uploadedFile = await uploadFileToHubSpot(file);
-    uploaded.push(uploadedFile);
-  }
+  // for (const file of files) {
+  //   const uploadedFile = await uploadFileToHubSpot(file);
+  //   uploaded.push(uploadedFile);
+  // }
 
-  const patchProps = {
-    [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
-  };
+  await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
+  method: "PATCH",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    properties: {
+      [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
+    },
+  }),
+});
 
-  const firstFileId = (field) => uploaded.find((x) => x.fieldname === field)?.id || "";
+  // const patchProps = {
+  //   [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
+  // };
 
-  patchProps[HUBSPOT_PROP.passport_first_page] = firstFileId("passport_first_page") || undefined;
-  patchProps[HUBSPOT_PROP.student_picture] = firstFileId("student_picture") || undefined;
-  patchProps[HUBSPOT_PROP.high_school_transcripts] =
-    uploaded
-      .filter((x) => x.fieldname === "high_school_transcripts")
-      .map((x) => x.id)
-      .filter(Boolean)
-      .join(";") || undefined;
-  patchProps[HUBSPOT_PROP.entrance_exam] = firstFileId("entrance_exam") || undefined;
-  patchProps[HUBSPOT_PROP.english_exam] = firstFileId("english_exam") || undefined;
-  patchProps[HUBSPOT_PROP.personal_statement] = firstFileId("personal_statement") || undefined;
+  // const firstFileId = (field) => uploaded.find((x) => x.fieldname === field)?.id || "";
 
-  const supportFileIds = uploaded
-    .filter((x) => x.fieldname === "supporting_documents")
-    .map((x) => x.id)
-    .filter(Boolean);
+  // patchProps[HUBSPOT_PROP.passport_first_page] = firstFileId("passport_first_page") || undefined;
+  // patchProps[HUBSPOT_PROP.student_picture] = firstFileId("student_picture") || undefined;
+  // patchProps[HUBSPOT_PROP.high_school_transcripts] =
+  //   uploaded
+  //     .filter((x) => x.fieldname === "high_school_transcripts")
+  //     .map((x) => x.id)
+  //     .filter(Boolean)
+  //     .join(";") || undefined;
+  // patchProps[HUBSPOT_PROP.entrance_exam] = firstFileId("entrance_exam") || undefined;
+  // patchProps[HUBSPOT_PROP.english_exam] = firstFileId("english_exam") || undefined;
+  // patchProps[HUBSPOT_PROP.personal_statement] = firstFileId("personal_statement") || undefined;
 
-  HUBSPOT_PROP.additional_docs.forEach((prop, index) => {
-    if (supportFileIds[index]) patchProps[prop] = supportFileIds[index];
-  });
+  // const supportFileIds = uploaded
+  //   .filter((x) => x.fieldname === "supporting_documents")
+  //   .map((x) => x.id)
+  //   .filter(Boolean);
+
+  // HUBSPOT_PROP.additional_docs.forEach((prop, index) => {
+  //   if (supportFileIds[index]) patchProps[prop] = supportFileIds[index];
+  // });
 
   await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
     method: "PATCH",
@@ -1268,9 +1278,9 @@ async function handleFinalSubmit(fields, files) {
     }),
   });
 
-  const verification = await runDocumentVerification(fields, files);
-  const advisorNote = buildAdvisorNote(fields, uploaded, verification);
-  await createHubSpotNoteForContact(contactId, advisorNote);
+  // const verification = await runDocumentVerification(fields, files);
+  // const advisorNote = buildAdvisorNote(fields, uploaded, verification);
+  // await createHubSpotNoteForContact(contactId, advisorNote);
 
   const latestContact = await findContactByEmail(fields.email, [HUBSPOT_PROP.intended_program_single_field]);
   const majorsParsed = parseMajorsField(
