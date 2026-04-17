@@ -11,8 +11,8 @@ bodyParser: false,
 };
 
 const ALLOWED_ORIGINS = [
-"[https://tristar-education.myshopify.com](https://tristar-education.myshopify.com)",
-"[https://tsapply.online](https://tsapply.online)",
+"https://tristar-education.myshopify.com",
+"https://tsapply.online",
 ];
 
 const HUBSPOT_BASE = "[https://api.hubapi.com](https://api.hubapi.com)";
