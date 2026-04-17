@@ -6,22 +6,56 @@ import mammoth from "mammoth";
 
 export const config = {
   api: {
-    bodyParser: false
-  }
+    bodyParser: false,
+  },
 };
 
 const ALLOWED_ORIGINS = [
   "https://tristar-education.myshopify.com",
-  "https://tsapply.online"
+  "https://tsapply.online",
 ];
+
+const HUBSPOT_BASE = "https://api.hubapi.com";
+const OPENAI_BASE = "https://api.openai.com/v1";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1";
+
+const HUBSPOT_PROP = {
+  firstname: "firstname",
+  lastname: "lastname",
+  email: "email",
+  phone: "phone",
+  date_of_birth: "date_of_birth",
+  gender: "gender",
+  citizenship_country: "country",
+  address_country: "country_2",
+  education_system: "current_qualification",
+  intended_program_single_field: "majors",
+  semester_interested: "semester_interested_in",
+  budget_year: "budget_year",
+  source_new: "source_new",
+  passport_first_page: "passport_1st_page",
+  student_picture: "student_s_picture",
+  high_school_transcripts: "high_school_transcripts___diploma",
+  entrance_exam: "sat_act",
+  english_exam: "english_proficiency_exam_like_ielts_toefl_pearson",
+  personal_statement: "personal_statement",
+  additional_docs: [
+    "additional_doc_1",
+    "additional_doc_2",
+    "additional_doc_3",
+    "additional_doc_4",
+    "additional_doc_5",
+  ],
+  grades_profile_fallback: "comments",
+};
 
 const CATEGORY_BASE_SCORES = {
   "Top Tier": 40,
   "Strong Mid-Tier": 30,
   "Budget-Friendly": 20,
-  "General": 10,
+  General: 10,
   "Extreme Budget": 5,
-  "Non-Preferred": -10
+  "Non-Preferred": -10,
 };
 
 const UNIVERSITY_CATEGORY_MAP = {
@@ -45,7 +79,7 @@ const UNIVERSITY_CATEGORY_MAP = {
   "kent university": "Extreme Budget",
   "istanbul kent university": "Extreme Budget",
   "beykent university": "Extreme Budget",
-  "atlas university": "Extreme Budget"
+  "atlas university": "Extreme Budget",
 };
 
 const RANKING_OVERRIDES = {
@@ -57,149 +91,87 @@ const RANKING_OVERRIDES = {
   "Bahcesehir University": "THE 801–1000 band",
   "Istanbul Medipol University": "THE 801–1000 band",
   "Istanbul Bilgi University": "THE 1200+ band",
-  "TED University": "Limited ranking presence"
+  "TED University": "Limited ranking presence",
 };
 
 const PROGRAM_FAMILIES = [
   {
     key: "business_administration",
     label: "Business Administration",
-    aliases: [
-      "business administration",
-      "bba",
-      "business",
-      "management",
-      "business management"
-    ],
-    degreeBias: "bba",
-    positivePatterns: [
-      /business administration/,
-      /\bbba\b/
-    ],
-    negativePatterns: [
-      /management engineering/,
-      /aviation management/,
-      /sports management/,
-      /logistics management/,
-      /management information systems/
-    ]
+    aliases: ["business administration", "bba", "business", "management", "business management"],
+    positivePatterns: [/business administration/, /\bbba\b/],
+    negativePatterns: [/management engineering/, /aviation management/, /sports management/, /logistics management/, /management information systems/],
   },
   {
     key: "economics",
     label: "Economics",
-    aliases: [
-      "economics",
-      "economics and finance",
-      "economics & finance",
-      "finance",
-      "banking"
-    ],
-    positivePatterns: [
-      /economics/,
-      /economics\s*(and|&)\s*finance/,
-      /finance and banking/,
-      /finance\s*&\s*banking/,
-      /international trade and finance/,
-      /international trade\s*&\s*finance/
-    ],
-    negativePatterns: [
-      /computer/,
-      /software/,
-      /data science/,
-      /artificial intelligence/
-    ]
+    aliases: ["economics", "economics and finance", "economics & finance", "finance", "banking"],
+    positivePatterns: [/economics/, /economics\s*(and|&)\s*finance/, /finance and banking/, /finance\s*&\s*banking/, /international trade and finance/, /international trade\s*&\s*finance/],
+    negativePatterns: [/computer/, /software/, /data science/, /artificial intelligence/],
   },
   {
     key: "computer",
     label: "Computer Engineering",
-    aliases: [
-      "computer science",
-      "cs",
-      "computer engineering",
-      "software engineering",
-      "software development"
-    ],
-    positivePatterns: [
-      /computer science/,
-      /computer engineering/,
-      /software engineering/,
-      /software development/
-    ],
-    negativePatterns: [
-      /economics/,
-      /finance/,
-      /psychology/,
-      /history/,
-      /comparative literature/
-    ]
+    aliases: ["computer science", "cs", "computer engineering", "software engineering", "software development"],
+    positivePatterns: [/computer science/, /computer engineering/, /software engineering/, /software development/],
+    negativePatterns: [/economics/, /finance/, /psychology/, /history/, /comparative literature/],
   },
   {
     key: "electrical",
     label: "Electrical & Electronics Engineering",
-    aliases: [
-      "electrical",
-      "electrical engineering",
-      "electronics engineering",
-      "electrical & electronics",
-      "electrical-electronics"
-    ],
-    positivePatterns: [
-      /electrical/,
-      /electronics engineering/,
-      /electrical\s*&\s*electronics/,
-      /electrical-?electronics/
-    ],
-    negativePatterns: []
+    aliases: ["electrical", "electrical engineering", "electronics engineering", "electrical & electronics", "electrical-electronics"],
+    positivePatterns: [/electrical/, /electronics engineering/, /electrical\s*&\s*electronics/, /electrical-?electronics/],
+    negativePatterns: [],
   },
   {
     key: "psychology",
     label: "Psychology",
     aliases: ["psychology"],
     positivePatterns: [/psychology/, /psychological counselling/],
-    negativePatterns: []
+    negativePatterns: [],
   },
   {
     key: "medicine",
     label: "Medicine",
     aliases: ["medicine", "md", "doctor of medicine"],
     positivePatterns: [/medicine/, /doctor of medicine/, /\bmd\b/],
-    negativePatterns: [/dentistry/, /nursing/, /pharmacy/]
+    negativePatterns: [/dentistry/, /nursing/, /pharmacy/],
   },
   {
     key: "dentistry",
     label: "Dentistry",
     aliases: ["dentistry", "dental", "bds"],
     positivePatterns: [/dentistry/, /dental/, /\bbds\b/],
-    negativePatterns: [/medicine/, /nursing/]
+    negativePatterns: [/medicine/, /nursing/],
   },
   {
     key: "nursing",
     label: "Nursing",
     aliases: ["nursing"],
     positivePatterns: [/nursing/],
-    negativePatterns: []
+    negativePatterns: [],
   },
   {
     key: "architecture",
     label: "Architecture",
     aliases: ["architecture", "interior architecture"],
     positivePatterns: [/architecture/],
-    negativePatterns: [/archaeology/]
+    negativePatterns: [/archaeology/],
   },
   {
     key: "artificial_intelligence",
     label: "Artificial Intelligence",
     aliases: ["artificial intelligence", "ai", "machine learning"],
     positivePatterns: [/artificial intelligence/, /ai engineering/, /ai and data/],
-    negativePatterns: [/economics/, /psychology/]
+    negativePatterns: [/economics/, /psychology/],
   },
   {
     key: "data_science",
     label: "Data Science",
     aliases: ["data science", "data analytics", "analytics", "data engineering"],
     positivePatterns: [/data science/, /analytics/, /data engineering/],
-    negativePatterns: [/economics/, /finance/, /computer engineering/]
-  }
+    negativePatterns: [/economics/, /finance/, /computer engineering/],
+  },
 ];
 
 function setCors(res, origin = "*") {
@@ -209,10 +181,13 @@ function setCors(res, origin = "*") {
   res.setHeader("Access-Control-Max-Age", "86400");
 }
 
+function resolveOrigin(requestOrigin) {
+  if (ALLOWED_ORIGINS.includes(requestOrigin)) return requestOrigin;
+  return ALLOWED_ORIGINS[0];
+}
+
 function normalizeText(value) {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return String(value || "").replace(/\s+/g, " ").trim();
 }
 
 function safeLower(value) {
@@ -238,6 +213,14 @@ function toNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function uniqueNonEmpty(arr) {
+  return [...new Set(arr.map((x) => normalizeText(x)).filter(Boolean))];
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
 function parseMultipart(req) {
   return new Promise((resolve, reject) => {
     const bb = Busboy({ headers: req.headers });
@@ -245,152 +228,91 @@ function parseMultipart(req) {
     const files = [];
 
     bb.on("field", (name, val) => {
-      fields[name] = val;
+      if (fields[name] === undefined) fields[name] = val;
+      else if (Array.isArray(fields[name])) fields[name].push(val);
+      else fields[name] = [fields[name], val];
     });
 
     bb.on("file", (name, file, info) => {
       const chunks = [];
       file.on("data", (data) => chunks.push(data));
       file.on("end", () => {
+        if (!info.filename) return;
         files.push({
           fieldname: name,
           filename: info.filename,
-          mimeType: info.mimeType,
-          buffer: Buffer.concat(chunks)
+          mimeType: info.mimeType || "application/octet-stream",
+          buffer: Buffer.concat(chunks),
         });
       });
     });
 
     bb.on("finish", () => resolve({ fields, files }));
     bb.on("error", reject);
-
     req.pipe(bb);
+  });
+}
+
+function parseJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk;
+    });
+    req.on("end", () => {
+      try {
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch {
+        reject(new Error("Invalid JSON request body"));
+      }
+    });
+    req.on("error", reject);
   });
 }
 
 async function extractTextFromFile(file) {
   const name = safeLower(file.filename);
-
   try {
     if (name.endsWith(".pdf")) {
       const parsed = await pdfParse(file.buffer);
       return parsed.text || "";
     }
-
     if (name.endsWith(".docx")) {
       const parsed = await mammoth.extractRawText({ buffer: file.buffer });
       return parsed.value || "";
     }
-
     if (name.endsWith(".txt")) {
       return file.buffer.toString("utf8");
     }
-
     return "";
   } catch {
     return "";
   }
 }
 
-function inferFromDocs(docText) {
-  const text = safeLower(docText);
-
-  const inferred = {
-    education_system: "",
-    intended_program: "",
-    grades_profile: "",
-    english_test: "",
-    english_score: "",
-    sat_score: ""
-  };
-
-  if (text.includes("a level") || text.includes("as level")) inferred.education_system = "A Levels";
-  else if (text.includes("o level")) inferred.education_system = "O/A Levels";
-  else if (text.includes("fsc")) inferred.education_system = "FSC";
-  else if (text.includes("ib")) inferred.education_system = "IB";
-
-  const matchedFamily = matchProgramFamily(text);
-  if (matchedFamily) inferred.intended_program = matchedFamily.label;
-
-  const ieltsMatch = docText.match(/IELTS[^0-9]*([0-9](?:\.[0-9])?)/i);
-  if (ieltsMatch) {
-    inferred.english_test = "IELTS";
-    inferred.english_score = ieltsMatch[1];
-  }
-
-  const satMatch = docText.match(/SAT[^0-9]*([0-9]{3,4})/i);
-  if (satMatch) {
-    inferred.sat_score = satMatch[1];
-  }
-
-  inferred.grades_profile = normalizeText(docText).slice(0, 800);
-
-  return inferred;
+function fileToDataUrl(file) {
+  return `data:${file.mimeType};base64,${file.buffer.toString("base64")}`;
 }
 
-function loadPrograms() {
-  const candidates = [
-    path.join(process.cwd(), "knowledge", "Programs.json"),
-    path.join(process.cwd(), "knowledge", "Programs(2).json"),
-    path.join(process.cwd(), "Programs.json"),
-    path.join(process.cwd(), "Programs(2).json")
-  ];
-
-  const existingPath = candidates.find((candidate) => fs.existsSync(candidate));
-  if (!existingPath) {
-    throw new Error("Programs dataset not found. Expected one of: knowledge/Programs.json, knowledge/Programs(2).json, Programs.json, Programs(2).json");
-  }
-
-  const raw = JSON.parse(fs.readFileSync(existingPath, "utf8"));
-
-  return raw
-    .map((row) => ({
-      program_title: normalizeText(row.Program_Title),
-      major_tag: normalizeText(row.Major_Tag),
-      degree_level: normalizeText(row.Degree_Level),
-      speciality: normalizeText(row.Speciality),
-      university: normalizeText(row.University),
-      city: normalizeText(row.City),
-      campus_style: normalizeText(row.Campus_Style),
-      intake: normalizeText(row.Intake),
-      scholarship_tag: normalizeText(row.Scholarship_Tag),
-      application_fee_tag: normalizeText(row.Application_Fee_Tag),
-      tuition_usd: toNumber(row.Tuition_USD),
-      tuition_basis: normalizeText(row.Tuition_Basis),
-      duration_years_assumed: toNumber(row.Duration_Years_Assumed),
-      category_tier: normalizeText(row.Category_Tier),
-      ranking_band: normalizeText(row.Ranking_Band),
-      raw_title: normalizeText(row.Source_Raw_Title || row.Raw_Title),
-      raw_tags: normalizeText(row.Source_Raw_Tags || row.Raw_Tags)
-    }))
-    .filter((row) => {
-      const level = safeLower(row.degree_level);
-      return row.university && row.program_title && level.includes("bachelor");
-    });
-}
-
-const knowledge = {
-  rules: {
-    country_scope: "Turkey only",
-    intake: "Fall only",
-    sat_policy: "SAT is not mandatory for most Turkish universities but may help scholarships",
-    deposit: "Seat reservation deposit is usually around $1,000",
-    living_costs: {
-      dorm_total_year: "$4,400 to $8,000",
-      shared_apartment_total_year: "$6,400 to $10,000",
-      food_transport_month: "$300 to $500"
+function matchProgramFamily(input) {
+  const q = normalizeForMatch(input);
+  if (!q) return null;
+  const scored = PROGRAM_FAMILIES.map((family) => {
+    let score = 0;
+    for (const alias of family.aliases) {
+      const aliasNorm = normalizeForMatch(alias);
+      if (aliasNorm && q.includes(aliasNorm)) score += aliasNorm.length >= 10 ? 8 : 5;
     }
-  },
-  programs: loadPrograms()
-};
-
-function categorizeUniversity(programRow) {
-  if (programRow.category_tier) return programRow.category_tier;
-  return UNIVERSITY_CATEGORY_MAP[safeLower(programRow.university)] || "General";
-}
-
-function categoryBaseScore(category) {
-  return CATEGORY_BASE_SCORES[category] ?? 0;
+    for (const pattern of family.positivePatterns) {
+      if (pattern.test(q)) score += 12;
+    }
+    for (const pattern of family.negativePatterns) {
+      if (pattern.test(q)) score -= 20;
+    }
+    return { family, score };
+  }).sort((a, b) => b.score - a.score);
+  if (!scored.length || scored[0].score <= 0) return null;
+  return scored[0].family;
 }
 
 function detectRequestedDegree(input) {
@@ -398,35 +320,8 @@ function detectRequestedDegree(input) {
   return {
     wants_ba: /\bba\b|\bbachelor of arts\b/.test(q),
     wants_bs: /\bbs\b|\bbsc\b|\bbachelor of science\b/.test(q),
-    wants_bba: /\bbba\b|\bbachelor of business administration\b/.test(q)
+    wants_bba: /\bbba\b|\bbachelor of business administration\b/.test(q),
   };
-}
-
-function matchProgramFamily(input) {
-  const q = normalizeForMatch(input);
-  if (!q) return null;
-
-  const scored = PROGRAM_FAMILIES.map((family) => {
-    let score = 0;
-
-    for (const alias of family.aliases) {
-      const aliasNorm = normalizeForMatch(alias);
-      if (aliasNorm && q.includes(aliasNorm)) score += aliasNorm.length >= 10 ? 8 : 5;
-    }
-
-    for (const pattern of family.positivePatterns) {
-      if (pattern.test(q)) score += 12;
-    }
-
-    for (const pattern of family.negativePatterns) {
-      if (pattern.test(q)) score -= 20;
-    }
-
-    return { family, score };
-  }).sort((a, b) => b.score - a.score);
-
-  if (!scored.length || scored[0].score <= 0) return null;
-  return scored[0].family;
 }
 
 function parseProgramIntent(input) {
@@ -434,14 +329,12 @@ function parseProgramIntent(input) {
   const normalized = normalizeForMatch(input);
   const degree = detectRequestedDegree(input);
   const family = matchProgramFamily(input);
-
   return {
     raw,
     normalized,
     family,
-    familyKey: family?.key || null,
     familyLabel: family?.label || raw,
-    ...degree
+    ...degree,
   };
 }
 
@@ -451,55 +344,38 @@ function getProgramSearchBlob(row) {
     row.major_tag,
     row.speciality,
     row.raw_title,
-    row.raw_tags
+    row.raw_tags,
   ].join(" "));
 }
 
 function titleDegreeMatch(programTitle, intent) {
   const title = normalizeForMatch(programTitle);
-
-  if (intent.wants_bba) {
-    return /business administration|\bbba\b/.test(title);
-  }
-
-  if (intent.wants_bs) {
-    return /(\bbsc\b|bachelor of science|bachelors of science)/.test(title);
-  }
-
-  if (intent.wants_ba) {
-    return /(\bba\b|bachelor of arts|bachelors of arts)/.test(title);
-  }
-
+  if (intent.wants_bba) return /business administration|\bbba\b/.test(title);
+  if (intent.wants_bs) return /(\bbsc\b|bachelor of science|bachelors of science)/.test(title);
+  if (intent.wants_ba) return /(\bba\b|bachelor of arts|bachelors of arts)/.test(title);
   return true;
 }
 
 function rowMatchesFamily(row, family) {
   if (!family) return true;
   const blob = getProgramSearchBlob(row);
-
   const positive = family.positivePatterns.some((pattern) => pattern.test(blob));
   if (!positive) return false;
-
   const negative = family.negativePatterns.some((pattern) => pattern.test(blob));
   if (negative) return false;
-
   return true;
 }
 
 function strictProgramFilter(row, intendedProgram) {
   const intent = parseProgramIntent(intendedProgram);
-
   if (!intent.normalized) return true;
   if (!titleDegreeMatch(row.program_title, intent)) return false;
   if (!rowMatchesFamily(row, intent.family)) return false;
-
   return true;
 }
 
 function computeTokenOverlapScore(blob, intendedProgram) {
   const queryTokens = tokenize(intendedProgram).filter((token) => token.length >= 3 && !["bachelor", "arts", "science"].includes(token));
-  if (!queryTokens.length) return 0;
-
   let score = 0;
   for (const token of queryTokens) {
     if (blob.includes(token)) score += 3;
@@ -510,16 +386,13 @@ function computeTokenOverlapScore(blob, intendedProgram) {
 function programMatchScore(programRow, intendedProgram) {
   const intent = parseProgramIntent(intendedProgram);
   const blob = getProgramSearchBlob(programRow);
-
   if (!intent.normalized) return 0;
   if (intent.family && !rowMatchesFamily(programRow, intent.family)) return -1000;
   if (!titleDegreeMatch(programRow.program_title, intent)) return -120;
 
   let score = 0;
-
   if (intent.family) {
     score += 35;
-
     for (const pattern of intent.family.positivePatterns) {
       if (pattern.test(normalizeForMatch(programRow.major_tag))) score += 30;
       if (pattern.test(normalizeForMatch(programRow.program_title))) score += 25;
@@ -527,16 +400,21 @@ function programMatchScore(programRow, intendedProgram) {
       if (pattern.test(normalizeForMatch(programRow.raw_tags))) score += 8;
     }
   }
-
   score += computeTokenOverlapScore(blob, intendedProgram);
-
   if (intent.wants_bba && /business administration|\bbba\b/.test(blob)) score += 18;
   if (intent.wants_bs && /(\bbsc\b|bachelor of science|bachelors of science)/.test(blob)) score += 18;
   if (intent.wants_ba && /(\bba\b|bachelor of arts|bachelors of arts)/.test(blob)) score += 18;
-
   if (/phd|master|doctoral|associate/.test(blob)) score -= 1000;
-
   return score;
+}
+
+function categorizeUniversity(programRow) {
+  if (programRow.category_tier) return programRow.category_tier;
+  return UNIVERSITY_CATEGORY_MAP[safeLower(programRow.university)] || "General";
+}
+
+function categoryBaseScore(category) {
+  return CATEGORY_BASE_SCORES[category] ?? 0;
 }
 
 function rankingScore(university, rankingImportance) {
@@ -558,16 +436,13 @@ function scholarshipScore(programRow, scholarshipPreference) {
 function lifestyleScore(programRow, lifestylePreference) {
   const pref = safeLower(lifestylePreference);
   if (!pref) return 0;
-
   const campusStyle = safeLower(programRow.campus_style);
   const university = safeLower(programRow.university);
-
   if (pref.includes("campus")) {
     if (campusStyle.includes("campus")) return 8;
     if (["sabanci university", "ozyegin university", "koc university", "isik university"].includes(university)) return 8;
     return 0;
   }
-
   if (pref.includes("city")) {
     if (campusStyle.includes("city")) return 8;
     if ([
@@ -582,197 +457,78 @@ function lifestyleScore(programRow, lifestylePreference) {
       "beykent university",
       "istanbul kent university",
       "uskudar university",
-      "istinye university"
+      "istinye university",
     ].includes(university)) return 8;
-    return 0;
   }
-
   return 0;
 }
 
 function budgetScore(programRow, yearlyBudgetTotal, lifestylePreference) {
   const budget = toNumber(yearlyBudgetTotal);
   if (!budget || !programRow.tuition_usd) return 0;
-
   const livingLow = safeLower(lifestylePreference).includes("campus") ? 4400 : 6400;
   const estimatedTotal = programRow.tuition_usd + livingLow;
-
   if (estimatedTotal <= budget * 0.8) return 10;
   if (estimatedTotal <= budget) return 6;
   if (estimatedTotal <= budget * 1.15) return 2;
   return -8;
 }
 
-function preferenceUniversityScore(university, universityPreference) {
-  const pref = normalizeForMatch(universityPreference);
-  if (!pref) return 0;
-  return normalizeForMatch(university).includes(pref) ? 12 : 0;
-}
-
-function docsOnlyMissingFields(merged) {
-  return [
-    { key: "ranking_importance", label: "Is university ranking an important factor for you?" },
-    { key: "yearly_budget_total", label: "What is your approximate yearly budget for tuition and living?" },
-    { key: "scholarship_preference", label: "Are you specifically looking for high scholarships?" },
-    { key: "lifestyle_preference", label: "Do you prefer a city-center university experience or a campus-based environment?" },
-    { key: "candidate_type", label: "Are you a private candidate or applying through a school?" }
-  ].filter((f) => !String(merged[f.key] || "").trim());
-}
-
-function fullMissingFields(merged) {
-  return [
-    { key: "university_preference", label: "Do you have any specific university preference?" },
-    { key: "ranking_importance", label: "Is university ranking an important factor for you?" },
-    { key: "yearly_budget_total", label: "What is your approximate yearly budget for tuition and living?" },
-    { key: "scholarship_preference", label: "Are you specifically looking for high scholarships?" },
-    { key: "lifestyle_preference", label: "Do you prefer a city-center university experience or a campus-based environment?" },
-    { key: "education_system", label: "What education system are you applying with?" },
-    { key: "sat_score", label: "Do you have an SAT score? If yes, what score?" },
-    { key: "intended_program", label: "What is your intended program/major?" },
-    { key: "grades_profile", label: "Are you in final year or already completed? Share grades/predicted." },
-    { key: "candidate_type", label: "Are you a private candidate or applying through a school?" }
-  ].filter((f) => !String(merged[f.key] || "").trim());
-}
-
-function buildQuestionResponse(missing, docsUploaded) {
-  return {
-    mode: "questions",
-    country_scope: "Turkey only",
-    docs_uploaded: docsUploaded,
-    message: "Please answer these before I recommend universities.",
-    questions: missing.map((f) => ({
-      key: f.key,
-      question: f.label
-    }))
-  };
-}
-
-function buildDiagnostics(row, student, breakdown) {
-  return {
-    intended_program: student.intended_program || "",
-    matched_family: parseProgramIntent(student.intended_program || "").familyLabel,
-    score_breakdown: breakdown,
-    matching_blob: getProgramSearchBlob(row)
-  };
-}
-
-function scorePrograms(student) {
-  const intent = parseProgramIntent(student.intended_program || "");
-  const strictPool = knowledge.programs.filter((row) => strictProgramFilter(row, student.intended_program || ""));
-
-  let pool = strictPool;
-  let usedRelaxedFallback = false;
-
-  if (!pool.length) {
-    if (intent.family) {
-      pool = knowledge.programs.filter((row) => rowMatchesFamily(row, intent.family));
-      usedRelaxedFallback = true;
-    } else {
-      pool = knowledge.programs.filter((row) => titleDegreeMatch(row.program_title, intent));
-      usedRelaxedFallback = true;
-    }
+function buildMajorsField(currentValue, intendedProgram, selectedPrograms) {
+  const selected = uniqueNonEmpty(selectedPrograms);
+  let text = `Intended: ${normalizeText(intendedProgram) || ""}`.trim();
+  if (selected.length) {
+    text += "\n\nSelected:\n" + selected.map((item) => `- ${item}`).join("\n");
   }
+  return text;
+}
 
-  const scored = pool
-    .map((row) => {
-      const category = categorizeUniversity(row);
-      const breakdown = {
-        category: categoryBaseScore(category),
-        program_match: programMatchScore(row, student.intended_program),
-        university_preference: preferenceUniversityScore(row.university, student.university_preference),
-        ranking: rankingScore(row.university, student.ranking_importance),
-        scholarship: scholarshipScore(row, student.scholarship_preference),
-        lifestyle: lifestyleScore(row, student.lifestyle_preference),
-        budget: budgetScore(row, student.yearly_budget_total, student.lifestyle_preference)
-      };
-
-      const total = Object.values(breakdown).reduce((sum, value) => sum + value, 0);
-
-      return {
-        ...row,
-        _category: category,
-        _score: total,
-        _diagnostics: buildDiagnostics(row, student, breakdown)
-      };
-    })
-    .filter((row) => row._score > -500)
-    .sort((a, b) => {
-      if (b._score !== a._score) return b._score - a._score;
-      if ((a.tuition_usd ?? Infinity) !== (b.tuition_usd ?? Infinity)) {
-        return (a.tuition_usd ?? Infinity) - (b.tuition_usd ?? Infinity);
-      }
-      return a.university.localeCompare(b.university);
-    });
-
-  const finalRows = [];
-  const seenProgramKeys = new Set();
-
-  for (const row of scored) {
-    if (finalRows.length >= 5) break;
-    if (row._score < 20) continue;
-
-    const key = `${safeLower(row.university)}::${safeLower(row.program_title)}`;
-    if (seenProgramKeys.has(key)) continue;
-
-    seenProgramKeys.add(key);
-    finalRows.push(row);
+function parseMajorsField(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return { intended: "", selected: [] };
+  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  let intended = "";
+  const selected = [];
+  for (const line of lines) {
+    if (line.toLowerCase().startsWith("intended:")) intended = normalizeText(line.slice(9));
+    else if (line.startsWith("-")) selected.push(normalizeText(line.slice(1)));
   }
+  if (!intended && lines.length === 1 && !lines[0].startsWith("-")) intended = lines[0];
+  return { intended, selected: uniqueNonEmpty(selected) };
+}
 
-  return {
-    rows: finalRows,
-    diagnostics: {
-      strict_matches: strictPool.length,
-      pool_size: pool.length,
-      used_relaxed_fallback: usedRelaxedFallback,
-      resolved_family: intent.familyLabel || "Unresolved"
-    }
-  };
+function selectionKey(program, university) {
+  return normalizeText([program, university].filter(Boolean).join(" - "));
 }
 
 function livingEstimate(lifestylePreference) {
   const pref = safeLower(lifestylePreference);
-  if (pref.includes("campus")) return knowledge.rules.living_costs.dorm_total_year;
-  if (pref.includes("city")) return knowledge.rules.living_costs.shared_apartment_total_year;
+  if (pref.includes("campus")) return "$4,400 to $8,000";
+  if (pref.includes("city")) return "$6,400 to $10,000";
   return "$4,400 to $10,000";
 }
 
 function explainWhyThisFits(row, student) {
   const reasons = [];
   const intent = parseProgramIntent(student.intended_program || "");
-
-  if (intent.familyLabel) {
-    reasons.push(`Matched to intended program family: ${intent.familyLabel}.`);
-  }
-
+  if (intent.familyLabel) reasons.push(`Matched to intended program family: ${intent.familyLabel}.`);
   reasons.push(`Selected within the ${row._category} category based on TriStar counseling positioning.`);
-
-  if (student.yearly_budget_total) {
-    reasons.push(`Compared against the provided yearly budget of ${student.yearly_budget_total}.`);
-  }
-
-  if (student.lifestyle_preference) {
-    reasons.push(`Considered lifestyle preference: ${student.lifestyle_preference}.`);
-  }
-
+  if (student.yearly_budget_total) reasons.push(`Compared against the provided yearly budget of ${student.yearly_budget_total}.`);
+  if (student.lifestyle_preference) reasons.push(`Considered lifestyle preference: ${student.lifestyle_preference}.`);
   return reasons;
 }
 
-function buildRecommendationResponse(bestRows, student, docsUsed, diagnostics) {
+function buildRecommendationResponse(bestRows, student, selectedPrograms) {
   return {
     mode: "recommendations",
     country_scope: "Turkey only",
-    docs_used: docsUsed,
-    diagnostics,
+    selected_programs: uniqueNonEmpty(selectedPrograms),
     summary: {
       budget_comment: `Recommendations were matched against an approximate yearly tuition + living budget of ${student.yearly_budget_total || "not fully specified"}.`,
-      ranking_comment: safeLower(student.ranking_importance) === "yes"
-        ? "Ranking-sensitive options were prioritized."
-        : "Ranking was not treated as the primary driver.",
+      ranking_comment: safeLower(student.ranking_importance) === "yes" ? "Ranking-sensitive options were prioritized." : "Ranking was not treated as the primary driver.",
       scholarship_comment: "Scholarships are shown as possible/estimated, not guaranteed.",
-      lifestyle_comment: student.lifestyle_preference
-        ? `Lifestyle preference considered: ${student.lifestyle_preference}.`
-        : "Lifestyle preference was not fully specified.",
-      intake_comment: "For undergraduate Türkiye admissions, the intake is Fall only."
+      lifestyle_comment: student.lifestyle_preference ? `Lifestyle preference considered: ${student.lifestyle_preference}.` : "Lifestyle preference was not fully specified.",
+      intake_comment: "For undergraduate Türkiye admissions, the intake is Fall only.",
     },
     recommendations: bestRows.map((row) => ({
       university: row.university,
@@ -781,134 +537,531 @@ function buildRecommendationResponse(bestRows, student, docsUsed, diagnostics) {
       ranking_band: row.ranking_band || RANKING_OVERRIDES[row.university] || "Indicative only",
       tuition_estimate: row.tuition_usd ? `$${row.tuition_usd}/year` : "Ask counselor",
       living_cost_estimate: livingEstimate(student.lifestyle_preference),
-      estimated_total_yearly_cost: row.tuition_usd
-        ? `Approx. $${row.tuition_usd} tuition + living depending on lifestyle`
-        : "Depends on tuition + living style",
-      scholarship_positioning: safeLower(row.scholarship_tag).includes("yes")
-        ? "Scholarship/discount may be possible depending on profile and university policy."
-        : "Scholarship may still be possible depending on profile and university policy.",
+      estimated_total_yearly_cost: row.tuition_usd ? `Approx. $${row.tuition_usd} tuition + living depending on lifestyle` : "Depends on tuition + living style",
+      scholarship_positioning: safeLower(row.scholarship_tag).includes("yes") ? "Scholarship/discount may be possible depending on profile and university policy." : "Scholarship may still be possible depending on profile and university policy.",
       why_this_fits: explainWhyThisFits(row, student),
       notes: [
         "Undergraduate Türkiye intake is Fall only.",
-        row.tuition_basis === "Annualized Estimate"
-          ? "Tuition shown here is an annualized estimate converted from a whole-program fee."
-          : "Tuition shown here is treated as an annual fee.",
-        "Seat reservation deposits are commonly around $1,000, depending on the university."
+        row.tuition_basis === "Annualized Estimate" || row.tuition_basis === "Converted from Entire Program" ? "Tuition shown here is an annualized estimate converted from a whole-program fee." : "Tuition shown here is treated as an annual fee.",
+        "Seat reservation deposits are commonly around $1,000, depending on the university.",
       ],
-      diagnostics: row._diagnostics
-    }))
+    })),
   };
 }
 
-function resolveOrigin(requestOrigin) {
-  if (ALLOWED_ORIGINS.includes(requestOrigin)) return requestOrigin;
-  return ALLOWED_ORIGINS[0];
+function loadPrograms() {
+  const candidates = [
+  path.join(process.cwd(), "knowledge", "Programs.json"),
+  path.join(process.cwd(), "Programs.json"),
+];
+  const existingPath = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!existingPath) throw new Error("Programs dataset not found.");
+  const raw = JSON.parse(fs.readFileSync(existingPath, "utf8"));
+  return raw.map((row) => ({
+    program_title: normalizeText(row.Program_Title),
+    major_tag: normalizeText(row.Major_Tag),
+    degree_level: normalizeText(row.Degree_Level),
+    speciality: normalizeText(row.Speciality),
+    university: normalizeText(row.University),
+    city: normalizeText(row.City),
+    campus_style: normalizeText(row.Campus_Style),
+    intake: normalizeText(row.Intake),
+    scholarship_tag: normalizeText(row.Scholarship_Tag),
+    application_fee_tag: normalizeText(row.Application_Fee_Tag),
+    tuition_usd: toNumber(row.Tuition_USD),
+    tuition_basis: normalizeText(row.Tuition_Basis),
+    duration_years_assumed: toNumber(row.Duration_Years_Assumed),
+    category_tier: normalizeText(row.Category_Tier),
+    ranking_band: normalizeText(row.Ranking_Band),
+    raw_title: normalizeText(row.Source_Raw_Title || row.Raw_Title),
+    raw_tags: normalizeText(row.Source_Raw_Tags || row.Raw_Tags),
+  })).filter((row) => row.university && row.program_title && safeLower(row.degree_level).includes("bachelor"));
 }
 
-function parseJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    let raw = "";
-    req.on("data", (chunk) => {
-      raw += chunk;
-    });
-    req.on("end", () => {
-      try {
-        resolve(raw ? JSON.parse(raw) : {});
-      } catch (error) {
-        reject(new Error("Invalid JSON request body"));
-      }
-    });
-    req.on("error", reject);
+const PROGRAMS = loadPrograms();
+
+function scorePrograms(student) {
+  const intent = parseProgramIntent(student.intended_program || "");
+  const strictPool = PROGRAMS.filter((row) => strictProgramFilter(row, student.intended_program || ""));
+  let pool = strictPool.length ? strictPool : PROGRAMS.filter((row) => rowMatchesFamily(row, intent.family) && titleDegreeMatch(row.program_title, intent));
+  if (!pool.length) pool = PROGRAMS;
+
+  const scored = pool.map((row) => {
+    const category = categorizeUniversity(row);
+    const total = [
+      categoryBaseScore(category),
+      programMatchScore(row, student.intended_program),
+      rankingScore(row.university, student.ranking_importance),
+      scholarshipScore(row, student.scholarship_preference),
+      lifestyleScore(row, student.lifestyle_preference),
+      budgetScore(row, student.yearly_budget_total, student.lifestyle_preference),
+    ].reduce((sum, n) => sum + n, 0);
+    return { ...row, _category: category, _score: total };
+  }).filter((row) => row._score > -500)
+    .sort((a, b) => b._score - a._score || (a.tuition_usd ?? Infinity) - (b.tuition_usd ?? Infinity) || a.university.localeCompare(b.university));
+
+  const finalRows = [];
+  const seen = new Set();
+  for (const row of scored) {
+    if (finalRows.length >= 12) break;
+    if (row._score < 20) continue;
+    const key = `${safeLower(row.university)}::${safeLower(row.program_title)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    finalRows.push(row);
+  }
+  return finalRows;
+}
+
+async function hubspotRequest(pathname, options = {}) {
+  const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN || process.env.HUBSPOT_TOKEN;
+  if (!token) throw new Error("Missing HubSpot token");
+  const response = await fetch(`${HUBSPOT_BASE}${pathname}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(options.headers || {}),
+    },
   });
+  const text = await response.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+  if (!response.ok) {
+    throw new Error(data.message || data.error || `HubSpot request failed: ${response.status}`);
+  }
+  return data;
+}
+
+async function findContactByEmail(email, extraProps = []) {
+  const normalizedEmail = normalizeText(email).toLowerCase();
+  if (!normalizedEmail) return null;
+  const properties = uniqueNonEmpty([
+    HUBSPOT_PROP.firstname,
+    HUBSPOT_PROP.lastname,
+    HUBSPOT_PROP.email,
+    HUBSPOT_PROP.phone,
+    HUBSPOT_PROP.intended_program_single_field,
+    ...extraProps,
+  ]);
+  const result = await hubspotRequest("/crm/v3/objects/contacts/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filterGroups: [{ filters: [{ propertyName: "email", operator: "EQ", value: normalizedEmail }] }],
+      properties,
+      limit: 1,
+    }),
+  });
+  return result.results?.[0] || null;
+}
+
+async function createOrUpdateContactByEmail(properties) {
+  const email = normalizeText(properties[HUBSPOT_PROP.email] || "").toLowerCase();
+  if (!email) throw new Error("Email is required");
+  const existing = await findContactByEmail(email, Object.values(HUBSPOT_PROP));
+  if (existing?.id) {
+    await hubspotRequest(`/crm/v3/objects/contacts/${existing.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ properties }),
+    });
+    return { id: existing.id, properties: existing.properties || {}, created: false };
+  }
+  const created = await hubspotRequest("/crm/v3/objects/contacts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ properties }),
+  });
+  return { id: created.id, properties: created.properties || {}, created: true };
+}
+
+async function uploadFileToHubSpot(file) {
+  const form = new FormData();
+  form.append("file", new Blob([file.buffer], { type: file.mimeType }), file.filename);
+  form.append("fileName", file.filename);
+  form.append("options", JSON.stringify({ access: "PRIVATE" }));
+  const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN || process.env.HUBSPOT_TOKEN;
+  const response = await fetch(`${HUBSPOT_BASE}/files/v3/files`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  const text = await response.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+  if (!response.ok) throw new Error(data.message || `HubSpot file upload failed: ${response.status}`);
+  return {
+    id: data.id || data.objects?.[0]?.id,
+    url: data.url || data.defaultHostingUrl || data.objects?.[0]?.url || "",
+    name: file.filename,
+    fieldname: file.fieldname,
+  };
+}
+
+function buildContactPropertiesFromForm(form, existingMajorsValue = "") {
+  const parsedMajors = parseMajorsField(existingMajorsValue);
+  const intendedProgram = normalizeText(form.intended_program || parsedMajors.intended);
+  return {
+    [HUBSPOT_PROP.firstname]: normalizeText(form.first_name),
+    [HUBSPOT_PROP.lastname]: normalizeText(form.last_name),
+    [HUBSPOT_PROP.email]: normalizeText(form.email).toLowerCase(),
+    [HUBSPOT_PROP.phone]: normalizeText(form.phone),
+    [HUBSPOT_PROP.date_of_birth]: normalizeText(form.date_of_birth),
+    [HUBSPOT_PROP.gender]: normalizeText(form.gender),
+    [HUBSPOT_PROP.citizenship_country]: normalizeText(form.citizenship_country),
+    [HUBSPOT_PROP.address_country]: normalizeText(form.address_country),
+    [HUBSPOT_PROP.education_system]: normalizeText(form.education_system),
+    [HUBSPOT_PROP.semester_interested]: normalizeText(form.semester_interested || "Fall 2026"),
+    [HUBSPOT_PROP.budget_year]: normalizeText(form.yearly_budget_total),
+    [HUBSPOT_PROP.source_new]: "ai-recommender",
+    [HUBSPOT_PROP.intended_program_single_field]: buildMajorsField(intendedProgram, intendedProgram, parsedMajors.selected),
+    [HUBSPOT_PROP.grades_profile_fallback]: normalizeText(form.grades_profile),
+  };
+}
+
+async function listAssociationTypeId(fromObjectType, toObjectType) {
+  const data = await hubspotRequest(`/crm/v3/associations/${fromObjectType}/${toObjectType}/types`, { method: "GET" });
+  const first = (data.results || [])[0];
+  if (!first?.id) throw new Error(`No association type found for ${fromObjectType} -> ${toObjectType}`);
+  return first.id;
+}
+
+async function createHubSpotNoteForContact(contactId, bodyText) {
+  const associationTypeId = await listAssociationTypeId("notes", "contacts");
+  await hubspotRequest("/crm/v3/objects/notes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      properties: {
+        hs_timestamp: nowIso(),
+        hs_note_body: bodyText,
+      },
+      associations: [
+        {
+          to: { id: contactId },
+          types: [
+            {
+              associationCategory: "HUBSPOT_DEFINED",
+              associationTypeId: Number(associationTypeId),
+            },
+          ],
+        },
+      ],
+    }),
+  });
+}
+
+async function openaiRequest(body) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("Missing OpenAI API key");
+  const response = await fetch(`${OPENAI_BASE}/responses`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+  if (!response.ok) throw new Error(data.error?.message || `OpenAI request failed: ${response.status}`);
+  return data;
+}
+
+function extractResponseText(responseJson) {
+  if (typeof responseJson.output_text === "string" && responseJson.output_text) return responseJson.output_text;
+  const parts = [];
+  for (const item of responseJson.output || []) {
+    for (const content of item.content || []) {
+      if (content.type === "output_text" && content.text) parts.push(content.text);
+    }
+  }
+  return parts.join("\n").trim();
+}
+
+async function runDocumentVerification(form, files) {
+  if (!files.length) {
+    return {
+      status: "NO_DOCUMENTS",
+      confidence: "LOW",
+      matched_fields: [],
+      mismatched_fields: [],
+      missing_or_unreadable: ["No files uploaded for AI review."],
+      advisor_summary: "No documents were available for AI cross-checking.",
+    };
+  }
+
+  const input = [
+    {
+      role: "system",
+      content: [
+        {
+          type: "input_text",
+          text: [
+            "You are an admissions document cross-checking assistant.",
+            "Your job is to compare the student's submitted form details against uploaded documents and compare the documents against each other.",
+            "Do not claim authenticity. Do not block recommendations. Only produce an advisor-facing screening summary.",
+            "Return strict JSON with this schema:",
+            JSON.stringify({
+              status: "PASSED | FLAGGED | PARTIAL",
+              confidence: "HIGH | MEDIUM | LOW",
+              matched_fields: ["..."],
+              mismatched_fields: ["..."],
+              missing_or_unreadable: ["..."],
+              advisor_summary: "...",
+            }, null, 2),
+          ].join("\n"),
+        },
+      ],
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: `Student form data:\n${JSON.stringify(form, null, 2)}`,
+        },
+      ],
+    },
+  ];
+
+  for (const file of files.slice(0, 10)) {
+    const localText = await extractTextFromFile(file);
+    if (localText) {
+      input.push({
+        role: "user",
+        content: [{ type: "input_text", text: `Extracted text from ${file.filename}:\n${localText.slice(0, 12000)}` }],
+      });
+    } else if (file.mimeType.startsWith("image/")) {
+      input.push({
+        role: "user",
+        content: [
+          { type: "input_text", text: `Review this uploaded image file: ${file.filename}` },
+          { type: "input_image", image_url: fileToDataUrl(file), detail: "high" },
+        ],
+      });
+    }
+  }
+
+  const response = await openaiRequest({
+    model: OPENAI_MODEL,
+    input,
+    text: { format: { type: "json_object" } },
+  });
+
+  const parsed = JSON.parse(extractResponseText(response) || "{}");
+  return {
+    status: normalizeText(parsed.status) || "PARTIAL",
+    confidence: normalizeText(parsed.confidence) || "LOW",
+    matched_fields: Array.isArray(parsed.matched_fields) ? parsed.matched_fields : [],
+    mismatched_fields: Array.isArray(parsed.mismatched_fields) ? parsed.mismatched_fields : [],
+    missing_or_unreadable: Array.isArray(parsed.missing_or_unreadable) ? parsed.missing_or_unreadable : [],
+    advisor_summary: normalizeText(parsed.advisor_summary),
+  };
+}
+
+function buildAdvisorNote(form, uploadedFiles, verification) {
+  const lines = [
+    "AI Document Cross-Check Summary",
+    "",
+    `Status: ${verification.status}`,
+    `Confidence: ${verification.confidence}`,
+    `Student: ${normalizeText([form.first_name, form.last_name].filter(Boolean).join(" ")) || "Unknown"}`,
+    `Email: ${normalizeText(form.email)}`,
+    `Intended Program: ${normalizeText(form.intended_program)}`,
+    "",
+    "Files received:",
+    ...uploadedFiles.map((f) => `- ${f.fieldname}: ${f.name}${f.url ? ` (${f.url})` : ""}`),
+    "",
+    "Matched fields:",
+    ...(verification.matched_fields.length ? verification.matched_fields.map((x) => `- ${x}`) : ["- None recorded"]),
+    "",
+    "Mismatched fields:",
+    ...(verification.mismatched_fields.length ? verification.mismatched_fields.map((x) => `- ${x}`) : ["- None recorded"]),
+    "",
+    "Missing / unreadable:",
+    ...(verification.missing_or_unreadable.length ? verification.missing_or_unreadable.map((x) => `- ${x}`) : ["- None recorded"]),
+    "",
+    "Advisor summary:",
+    verification.advisor_summary || "No summary returned.",
+  ];
+  return lines.join("\n");
+}
+
+function groupFilesByField(files) {
+  const map = new Map();
+  for (const file of files) {
+    if (!map.has(file.fieldname)) map.set(file.fieldname, []);
+    map.get(file.fieldname).push(file);
+  }
+  return map;
+}
+
+function validateRequiredFinalFields(form, groupedFiles) {
+  const requiredFields = [
+    "first_name",
+    "last_name",
+    "date_of_birth",
+    "gender",
+    "citizenship_country",
+    "email",
+    "phone",
+    "address_country",
+    "education_system",
+    "intended_program",
+    "semester_interested",
+    "yearly_budget_total",
+    "ranking_importance",
+    "scholarship_preference",
+    "lifestyle_preference",
+    "grades_profile",
+    "candidate_type",
+  ];
+  for (const key of requiredFields) {
+    if (!normalizeText(form[key])) throw new Error(`Missing required field: ${key}`);
+  }
+  const requiredFileFields = ["passport_first_page", "student_picture", "high_school_transcripts"];
+  for (const key of requiredFileFields) {
+    if (!(groupedFiles.get(key) || []).length) throw new Error(`Missing required file: ${key}`);
+  }
+}
+
+async function handleCaptureStepOne(body) {
+  const properties = {
+    [HUBSPOT_PROP.firstname]: normalizeText(body.first_name),
+    [HUBSPOT_PROP.lastname]: normalizeText(body.last_name),
+    [HUBSPOT_PROP.email]: normalizeText(body.email).toLowerCase(),
+    [HUBSPOT_PROP.phone]: normalizeText(body.phone),
+    [HUBSPOT_PROP.date_of_birth]: normalizeText(body.date_of_birth),
+    [HUBSPOT_PROP.gender]: normalizeText(body.gender),
+    [HUBSPOT_PROP.citizenship_country]: normalizeText(body.citizenship_country),
+    [HUBSPOT_PROP.address_country]: normalizeText(body.address_country),
+    [HUBSPOT_PROP.source_new]: "ai-recommender",
+  };
+  const existing = await findContactByEmail(body.email, [HUBSPOT_PROP.intended_program_single_field]);
+  const existingMajors = existing?.properties?.[HUBSPOT_PROP.intended_program_single_field] || "";
+  properties[HUBSPOT_PROP.intended_program_single_field] = buildMajorsField(existingMajors ? parseMajorsField(existingMajors).intended : normalizeText(body.intended_program), normalizeText(body.intended_program), parseMajorsField(existingMajors).selected);
+  const result = await createOrUpdateContactByEmail(properties);
+  return { ok: true, mode: "capture_step_1", contact_id: result.id };
+}
+
+async function handleTogglePreferredProgram(body) {
+  const email = normalizeText(body.email).toLowerCase();
+  if (!email) throw new Error("Email is required");
+  const contact = await findContactByEmail(email, [HUBSPOT_PROP.intended_program_single_field]);
+  if (!contact?.id) throw new Error("No HubSpot contact found for this email");
+
+  const current = parseMajorsField(contact.properties?.[HUBSPOT_PROP.intended_program_single_field] || "");
+  const intended = current.intended || normalizeText(body.intended_program);
+  const selectedKey = selectionKey(body.selected_program, body.selected_university);
+  let selected = current.selected.slice();
+  if (selected.includes(selectedKey)) selected = selected.filter((x) => x !== selectedKey);
+  else selected = uniqueNonEmpty([...selected, selectedKey]);
+
+  const nextValue = buildMajorsField(intended, intended, selected);
+  await hubspotRequest(`/crm/v3/objects/contacts/${contact.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: { [HUBSPOT_PROP.intended_program_single_field]: nextValue, [HUBSPOT_PROP.source_new]: "ai-recommender" } }),
+  });
+
+  return { ok: true, mode: "toggle_preferred_program", selected_programs: selected };
+}
+
+async function handleFinalSubmit(fields, files) {
+  const groupedFiles = groupFilesByField(files);
+  validateRequiredFinalFields(fields, groupedFiles);
+
+  const existing = await findContactByEmail(fields.email, [HUBSPOT_PROP.intended_program_single_field]);
+  const existingMajors = existing?.properties?.[HUBSPOT_PROP.intended_program_single_field] || "";
+  const contactProps = buildContactPropertiesFromForm(fields, existingMajors);
+  const contact = await createOrUpdateContactByEmail(contactProps);
+  const contactId = contact.id;
+
+  const uploaded = [];
+  for (const file of files) {
+    const uploadedFile = await uploadFileToHubSpot(file);
+    uploaded.push(uploadedFile);
+  }
+
+  const patchProps = { [HUBSPOT_PROP.source_new]: "ai-recommender" };
+
+  const firstUrl = (field) => (uploaded.find((x) => x.fieldname === field)?.url || "");
+  patchProps[HUBSPOT_PROP.passport_first_page] = firstUrl("passport_first_page") || undefined;
+  patchProps[HUBSPOT_PROP.student_picture] = firstUrl("student_picture") || undefined;
+  patchProps[HUBSPOT_PROP.high_school_transcripts] = uploaded.filter((x) => x.fieldname === "high_school_transcripts").map((x) => x.url).filter(Boolean).join("\n") || undefined;
+  patchProps[HUBSPOT_PROP.entrance_exam] = firstUrl("entrance_exam") || undefined;
+  patchProps[HUBSPOT_PROP.english_exam] = firstUrl("english_exam") || undefined;
+  patchProps[HUBSPOT_PROP.personal_statement] = firstUrl("personal_statement") || undefined;
+
+  const supportUrls = uploaded.filter((x) => x.fieldname === "supporting_documents").map((x) => x.url).filter(Boolean);
+  HUBSPOT_PROP.additional_docs.forEach((prop, index) => {
+    if (supportUrls[index]) patchProps[prop] = supportUrls[index];
+  });
+
+  await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: Object.fromEntries(Object.entries(patchProps).filter(([, v]) => v !== undefined)) }),
+  });
+
+  const verification = await runDocumentVerification(fields, files);
+  const advisorNote = buildAdvisorNote(fields, uploaded, verification);
+  await createHubSpotNoteForContact(contactId, advisorNote);
+
+  const latestContact = await findContactByEmail(fields.email, [HUBSPOT_PROP.intended_program_single_field]);
+  const majorsParsed = parseMajorsField(latestContact?.properties?.[HUBSPOT_PROP.intended_program_single_field] || contactProps[HUBSPOT_PROP.intended_program_single_field]);
+  const student = {
+    intended_program: majorsParsed.intended || fields.intended_program,
+    ranking_importance: fields.ranking_importance,
+    scholarship_preference: fields.scholarship_preference,
+    lifestyle_preference: fields.lifestyle_preference,
+    yearly_budget_total: fields.yearly_budget_total,
+  };
+  const recommendations = scorePrograms(student);
+  return buildRecommendationResponse(recommendations, student, majorsParsed.selected);
 }
 
 export default async function handler(req, res) {
   const origin = resolveOrigin(req.headers.origin);
   setCors(res, origin);
 
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
-  }
-
+  if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method === "GET") {
     return res.status(200).json({
       ok: true,
-      country_scope: "Turkey only",
-      loaded_program_rows: knowledge.programs.length,
-      allowed_origins: ALLOWED_ORIGINS
+      message: "AI recommender backend is running.",
+      loaded_program_rows: PROGRAMS.length,
     });
   }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    let body = {};
-    let files = [];
-
     const contentType = req.headers["content-type"] || "";
-
     if (contentType.includes("multipart/form-data")) {
-      const parsed = await parseMultipart(req);
-      body = parsed.fields || {};
-      files = parsed.files || [];
-    } else {
-      body = await parseJsonBody(req);
-    }
-
-    let extractedText = "";
-    for (const file of files) {
-      const text = await extractTextFromFile(file);
-      if (text) {
-        extractedText += `\n\n[FILE: ${file.filename}]\n${text}`;
+      const { fields, files } = await parseMultipart(req);
+      const action = normalizeText(fields.action || "final_submit");
+      if (action === "final_submit") {
+        const result = await handleFinalSubmit(fields, files);
+        return res.status(200).json(result);
       }
+      return res.status(400).json({ error: "Unsupported multipart action" });
     }
 
-    const inferred = extractedText ? inferFromDocs(extractedText) : {};
-
-    const merged = {
-      ...body,
-      education_system: body.education_system || inferred.education_system || "",
-      intended_program: body.intended_program || body.course_interest || inferred.intended_program || "",
-      grades_profile: body.grades_profile || inferred.grades_profile || "",
-      sat_score: body.sat_score || inferred.sat_score || "",
-      english_test: body.english_test || inferred.english_test || "",
-      english_score: body.english_score || inferred.english_score || ""
-    };
-
-    const docsOnlyMode = files.length > 0 && Object.values(body).every((v) => !String(v || "").trim());
-
-    const missing = docsOnlyMode ? docsOnlyMissingFields(merged) : fullMissingFields(merged);
-
-    if (missing.length > 0) {
-      return res.status(200).json(buildQuestionResponse(missing, files.length > 0));
+    const body = await parseJsonBody(req);
+    const action = normalizeText(body.action);
+    if (action === "capture_step_1") {
+      const result = await handleCaptureStepOne(body);
+      return res.status(200).json(result);
     }
-
-    const { rows: bestRows, diagnostics } = scorePrograms(merged);
-
-    if (!bestRows.length) {
-      return res.status(200).json({
-        mode: "recommendations",
-        country_scope: "Turkey only",
-        docs_used: files.length > 0,
-        diagnostics,
-        summary: {
-          budget_comment: "No strong match was found with the current inputs.",
-          ranking_comment: "",
-          scholarship_comment: "",
-          lifestyle_comment: "",
-          intake_comment: "For undergraduate Türkiye admissions, the intake is Fall only."
-        },
-        recommendations: [],
-        message: "No confident program match was found. This response intentionally avoids returning unrelated programs."
-      });
+    if (action === "toggle_preferred_program") {
+      const result = await handleTogglePreferredProgram(body);
+      return res.status(200).json(result);
     }
-
-    return res.status(200).json(buildRecommendationResponse(bestRows, merged, files.length > 0, diagnostics));
+    return res.status(400).json({ error: "Unsupported JSON action" });
   } catch (error) {
-    return res.status(500).json({
-      error: error.message || "Server error"
-    });
+    console.error(error);
+    return res.status(500).json({ error: error.message || "Server error" });
   }
 }
