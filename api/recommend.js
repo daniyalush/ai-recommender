@@ -232,6 +232,13 @@ function normalizeText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function normalizeGender(value) {
+  const v = normalizeText(value).toLowerCase();
+  if (v === "male") return "male";
+  if (v === "female") return "female";
+  return "";
+}
+
 function safeLower(value) {
   return normalizeText(value).toLowerCase();
 }
@@ -766,7 +773,23 @@ async function hubspotRequest(pathname, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(data.message || data.error || `HubSpot request failed: ${response.status}`);
+    console.error("HubSpot error response:", JSON.stringify(data, null, 2));
+
+    const detailedMessage =
+      data?.message ||
+      data?.error ||
+      data?.errors?.map((e) => {
+        const field = e?.context?.propertyName || e?.name || "unknown_field";
+        const invalidValue =
+          e?.context?.value ||
+          e?.context?.invalidValue ||
+          e?.in ||
+          "unknown_value";
+        return `${field}: ${invalidValue}`;
+      }).join(" | ") ||
+      `HubSpot request failed: ${response.status}`;
+
+    throw new Error(detailedMessage);
   }
 
   return data;
@@ -878,13 +901,13 @@ function buildContactPropertiesFromForm(form, existingMajorsValue = "") {
   setIfPresent(properties, HUBSPOT_PROP.email, normalizeText(form.email).toLowerCase());
   setIfPresent(properties, HUBSPOT_PROP.phone, form.phone);
   setIfPresent(properties, HUBSPOT_PROP.date_of_birth, form.date_of_birth);
-  setIfPresent(properties, HUBSPOT_PROP.gender, form.gender);
+  setIfPresent(properties, HUBSPOT_PROP.gender, normalizeGender(form.gender));
   setIfPresent(properties, HUBSPOT_PROP.citizenship_country, form.citizenship_country);
   setIfPresent(properties, HUBSPOT_PROP.address_country, form.address_country);
   setIfPresent(properties, HUBSPOT_PROP.education_system, form.education_system);
-  setIfPresent(properties, HUBSPOT_PROP.semester_interested, form.semester_interested || "Fall 2026");
+  setIfPresent(properties, HUBSPOT_PROP.semester_interested, form.semester_interested);
   setIfPresent(properties, HUBSPOT_PROP.budget_year, form.yearly_budget_total);
-  setIfPresent(properties, HUBSPOT_PROP.source_new, SOURCE_NEW_VALUE);
+  // setIfPresent(properties, HUBSPOT_PROP.source_new, SOURCE_NEW_VALUE);
   setIfPresent(properties, HUBSPOT_PROP.grades_profile_fallback, form.grades_profile);
 
   properties[HUBSPOT_PROP.intended_program_single_field] = buildMajorsField(
@@ -1143,10 +1166,10 @@ async function handleCaptureStepOne(body) {
   setIfPresent(properties, HUBSPOT_PROP.email, normalizeText(body.email).toLowerCase());
   setIfPresent(properties, HUBSPOT_PROP.phone, body.phone);
   setIfPresent(properties, HUBSPOT_PROP.date_of_birth, body.date_of_birth);
-  setIfPresent(properties, HUBSPOT_PROP.gender, body.gender);
+  setIfPresent(properties, HUBSPOT_PROP.gender, normalizeGender(body.gender));
   setIfPresent(properties, HUBSPOT_PROP.citizenship_country, body.citizenship_country);
   setIfPresent(properties, HUBSPOT_PROP.address_country, body.address_country);
-  setIfPresent(properties, HUBSPOT_PROP.source_new, SOURCE_NEW_VALUE);
+  // setIfPresent(properties, HUBSPOT_PROP.source_new, SOURCE_NEW_VALUE);
 
   const existing = await findContactByEmail(body.email, [HUBSPOT_PROP.intended_program_single_field]);
   const existingMajors = existing?.properties?.[HUBSPOT_PROP.intended_program_single_field] || "";
@@ -1184,7 +1207,7 @@ async function handleTogglePreferredProgram(body) {
     body: JSON.stringify({
       properties: {
         [HUBSPOT_PROP.intended_program_single_field]: nextValue,
-        [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
+        // [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
       },
     }),
   });
@@ -1209,7 +1232,7 @@ async function handleFinalSubmit(fields, files) {
   }
 
   const patchProps = {
-    [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
+    // [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
   };
 
   const firstFileId = (field) => uploaded.find((x) => x.fieldname === field)?.id || "";
@@ -1266,27 +1289,7 @@ async function handleFinalSubmit(fields, files) {
 }
 
 function publicErrorMessage(error) {
-  const raw = String(error?.message || "");
-
-  if (
-    raw.includes("INVALID_OPTION") ||
-    raw.includes("Property values were not valid") ||
-    raw.includes("was not one of the allowed options")
-  ) {
-    return "One or more selected values are invalid. Please review the form and try again.";
-  }
-
-  if (raw.includes("Missing required environment variables")) {
-    return raw;
-  }
-
-  if (raw.includes("Missing required field")) return "Please complete all required fields.";
-  if (raw.includes("Missing required file")) return "Please upload all required documents.";
-  if (raw.includes("No HubSpot contact found")) {
-    return "We could not find your profile. Please submit the form again.";
-  }
-
-  return "Something went wrong. Please try again.";
+  return String(error?.message || "Something went wrong. Please try again.");
 }
 
 export default async function handler(req, res) {
