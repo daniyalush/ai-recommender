@@ -1270,13 +1270,13 @@ async function handleFinalSubmit(fields, files) {
   //   if (supportFileIds[index]) patchProps[prop] = supportFileIds[index];
   // });
 
-  await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      properties: Object.fromEntries(Object.entries(patchProps).filter(([, v]) => v !== undefined)),
-    }),
-  });
+  // await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
+  //   method: "PATCH",
+  //   headers: { "Content-Type": "application/json" },
+  //   body: JSON.stringify({
+  //     properties: Object.fromEntries(Object.entries(patchProps).filter(([, v]) => v !== undefined)),
+  //   }),
+  // });
 
   // const verification = await runDocumentVerification(fields, files);
   // const advisorNote = buildAdvisorNote(fields, uploaded, verification);
