@@ -550,13 +550,11 @@ function buildRecommendationResponse(bestRows, student, selectedPrograms) {
 }
 
 function loadPrograms() {
-  const candidates = [
-  path.join(process.cwd(), "knowledge", "Programs.json"),
-  path.join(process.cwd(), "Programs.json"),
-];
-  const existingPath = candidates.find((candidate) => fs.existsSync(candidate));
-  if (!existingPath) throw new Error("Programs dataset not found.");
-  const raw = JSON.parse(fs.readFileSync(existingPath, "utf8"));
+  const datasetPath = path.join(process.cwd(), "knowledge", "Programs.json");
+  if (!fs.existsSync(datasetPath)) {
+    throw new Error("Programs dataset not found at knowledge/Programs.json");
+  }
+  const raw = JSON.parse(fs.readFileSync(datasetPath, "utf8"));
   return raw.map((row) => ({
     program_title: normalizeText(row.Program_Title),
     major_tag: normalizeText(row.Major_Tag),
@@ -713,7 +711,7 @@ function buildContactPropertiesFromForm(form, existingMajorsValue = "") {
     [HUBSPOT_PROP.education_system]: normalizeText(form.education_system),
     [HUBSPOT_PROP.semester_interested]: normalizeText(form.semester_interested || "Fall 2026"),
     [HUBSPOT_PROP.budget_year]: normalizeText(form.yearly_budget_total),
-    [HUBSPOT_PROP.source_new]: "ai-recommender",
+    [HUBSPOT_PROP.source_new]: "TED DIRECT 2024",
     [HUBSPOT_PROP.intended_program_single_field]: buildMajorsField(intendedProgram, intendedProgram, parsedMajors.selected),
     [HUBSPOT_PROP.grades_profile_fallback]: normalizeText(form.grades_profile),
   };
@@ -937,7 +935,7 @@ async function handleCaptureStepOne(body) {
     [HUBSPOT_PROP.gender]: normalizeText(body.gender),
     [HUBSPOT_PROP.citizenship_country]: normalizeText(body.citizenship_country),
     [HUBSPOT_PROP.address_country]: normalizeText(body.address_country),
-    [HUBSPOT_PROP.source_new]: "ai-recommender",
+    [HUBSPOT_PROP.source_new]: "TED DIRECT 2024",
   };
   const existing = await findContactByEmail(body.email, [HUBSPOT_PROP.intended_program_single_field]);
   const existingMajors = existing?.properties?.[HUBSPOT_PROP.intended_program_single_field] || "";
@@ -963,7 +961,7 @@ async function handleTogglePreferredProgram(body) {
   await hubspotRequest(`/crm/v3/objects/contacts/${contact.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ properties: { [HUBSPOT_PROP.intended_program_single_field]: nextValue, [HUBSPOT_PROP.source_new]: "ai-recommender" } }),
+    body: JSON.stringify({ properties: { [HUBSPOT_PROP.intended_program_single_field]: nextValue, [HUBSPOT_PROP.source_new]: "TED DIRECT 2024" } }),
   });
 
   return { ok: true, mode: "toggle_preferred_program", selected_programs: selected };
@@ -985,7 +983,7 @@ async function handleFinalSubmit(fields, files) {
     uploaded.push(uploadedFile);
   }
 
-  const patchProps = { [HUBSPOT_PROP.source_new]: "ai-recommender" };
+  const patchProps = { [HUBSPOT_PROP.source_new]: "TED DIRECT 2024" };
 
   const firstUrl = (field) => (uploaded.find((x) => x.fieldname === field)?.url || "");
   patchProps[HUBSPOT_PROP.passport_first_page] = firstUrl("passport_first_page") || undefined;
@@ -1021,6 +1019,32 @@ async function handleFinalSubmit(fields, files) {
   };
   const recommendations = scorePrograms(student);
   return buildRecommendationResponse(recommendations, student, majorsParsed.selected);
+}
+
+function publicErrorMessage(error) {
+  const raw = String(error?.message || "");
+
+  if (
+    raw.includes("INVALID_OPTION") ||
+    raw.includes("Property values were not valid") ||
+    raw.includes("was not one of the allowed options")
+  ) {
+    return "One or more selected values are invalid. Please review the form and try again.";
+  }
+
+  if (raw.includes("Missing required field")) {
+    return "Please complete all required fields.";
+  }
+
+  if (raw.includes("Missing required file")) {
+    return "Please upload all required documents.";
+  }
+
+  if (raw.includes("No HubSpot contact found")) {
+    return "We could not find your profile. Please submit the form again.";
+  }
+
+  return "Something went wrong. Please try again.";
 }
 
 export default async function handler(req, res) {
@@ -1061,7 +1085,7 @@ export default async function handler(req, res) {
     }
     return res.status(400).json({ error: "Unsupported JSON action" });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: error.message || "Server error" });
-  }
+  console.error(error);
+  return res.status(500).json({ error: publicErrorMessage(error) });
+}
 }
