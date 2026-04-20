@@ -573,7 +573,7 @@ function buildMajorsField(intendedProgram, selectedPrograms) {
   let text = `Intended: ${normalizeText(intendedProgram) || ""}`.trim();
 
   if (selected.length) {
-    text += "\n\nSelected:\n" + selected.map((item) => `- ${item}`).join("\n");
+    text += "\n\nSelected: " + selected.join(" | ");
   }
 
   return text;
@@ -583,21 +583,19 @@ function parseMajorsField(value) {
   const raw = String(value || "").trim();
   if (!raw) return { intended: "", selected: [] };
 
-  const lines = raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const intendedMatch = raw.match(/^Intended:\s*(.*?)(?:\n\nSelected:\s*(.*))?$/s);
 
-  let intended = "";
-  const selected = [];
+  if (intendedMatch) {
+    const intended = normalizeText(intendedMatch[1] || "");
+    const selectedRaw = normalizeText(intendedMatch[2] || "");
+    const selected = selectedRaw
+      ? selectedRaw.split("|").map((item) => normalizeText(item)).filter(Boolean)
+      : [];
 
-  for (const line of lines) {
-    if (line.toLowerCase().startsWith("intended:")) intended = normalizeText(line.slice(9));
-    else if (line.startsWith("-")) selected.push(normalizeText(line.slice(1)));
+    return { intended, selected: uniqueNonEmpty(selected) };
   }
 
-  if (!intended && lines.length === 1 && !lines[0].startsWith("-")) intended = lines[0];
-  return { intended, selected: uniqueNonEmpty(selected) };
+  return { intended: normalizeText(raw), selected: [] };
 }
 
 function selectionKey(program, university) {
