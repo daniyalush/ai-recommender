@@ -1215,6 +1215,44 @@ async function handleTogglePreferredProgram(body) {
   return { ok: true, mode: "toggle_preferred_program", selected_programs: selected };
 }
 
+async function handleGetMoreRecommendations(body) {
+  const email = normalizeText(body.email).toLowerCase();
+  const intendedProgram = normalizeText(body.intended_program);
+
+  if (!email) throw new Error("Email is required");
+  if (!intendedProgram) throw new Error("Intended program is required");
+
+  const contact = await findContactByEmail(email, [HUBSPOT_PROP.intended_program_single_field]);
+  if (!contact?.id) throw new Error("No HubSpot contact found for this email");
+
+  const current = parseMajorsField(contact.properties?.[HUBSPOT_PROP.intended_program_single_field] || "");
+  const selected = current.selected || [];
+
+  const nextMajorsValue = buildMajorsField(intendedProgram, selected);
+
+  await hubspotRequest(`/crm/v3/objects/contacts/${contact.id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      properties: {
+        [HUBSPOT_PROP.intended_program_single_field]: nextMajorsValue,
+        [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
+      },
+    }),
+  });
+
+  const student = {
+    intended_program: intendedProgram,
+    ranking_importance: body.ranking_importance,
+    scholarship_preference: body.scholarship_preference,
+    lifestyle_preference: body.lifestyle_preference,
+    yearly_budget_total: body.yearly_budget_total,
+  };
+
+  const recommendations = scorePrograms(student);
+  return buildRecommendationResponse(recommendations, student, selected);
+}
+
 async function handleFinalSubmit(fields, files) {
   const groupedFiles = groupFilesByField(files);
   // validateRequiredFinalFields(fields, groupedFiles);
@@ -1359,16 +1397,21 @@ export default async function handler(req, res) {
     const action = normalizeText(body.action);
 
     if (action === "capture_step_1") {
-      const result = await handleCaptureStepOne(body);
-      return res.status(200).json(result);
-    }
+  const result = await handleCaptureStepOne(body);
+  return res.status(200).json(result);
+}
 
-    if (action === "toggle_preferred_program") {
-      const result = await handleTogglePreferredProgram(body);
-      return res.status(200).json(result);
-    }
+if (action === "toggle_preferred_program") {
+  const result = await handleTogglePreferredProgram(body);
+  return res.status(200).json(result);
+}
 
-    return res.status(400).json({ error: "Unsupported JSON action" });
+if (action === "get_more_recommendations") {
+  const result = await handleGetMoreRecommendations(body);
+  return res.status(200).json(result);
+}
+
+return res.status(400).json({ error: "Unsupported JSON action" });
   } catch (error) {
     console.error(error);
 
