@@ -36,7 +36,7 @@ const HUBSPOT_PROP = {
   semester_interested: "semester_interested_in",
   budget_year: "budget_year",
   source_new: "source_new",
-  passport_first_page: "passport_1st_page",
+  passport_first_page: "passport_file",
   student_picture: "student_s_picture",
   high_school_transcripts: "high_school_transcripts___diploma",
   entrance_exam: "sat_act",
