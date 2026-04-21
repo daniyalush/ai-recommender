@@ -36,19 +36,13 @@ const HUBSPOT_PROP = {
   semester_interested: "semester_interested_in",
   budget_year: "budget_year",
   source_new: "source_new",
-  passport_first_page: "passport_file",
-  student_picture: "student_s_picture",
-  high_school_transcripts: "high_school_transcripts___diploma",
-  entrance_exam: "sat_act",
-  english_exam: "english_proficiency_exam_like_ielts_toefl_pearson",
-  personal_statement: "personal_statement",
-  additional_docs: [
-    "additional_doc_1",
-    "additional_doc_2",
-    "additional_doc_3",
-    "additional_doc_4",
-    "additional_doc_5",
-  ],
+  passport_first_page: "passport_url",
+  student_picture: "student_picture_url",
+  high_school_transcripts: "transcripts_url",
+  entrance_exam: "entrance_exam_url",
+  english_exam: "english_exam_url",
+  personal_statement: "personal_statement_url",
+  supporting_documents: "supporting_docs_urls",
   grades_profile_fallback: "comments",
 };
 
@@ -1282,23 +1276,24 @@ async function handleFinalSubmit(fields, files) {
   [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
 };
 
-const firstFileId = (field) => uploaded.find((x) => x.fieldname === field)?.id || "";
+const firstFileUrl = (field) => uploaded.find((x) => x.fieldname === field)?.url || "";
 
-patchProps[HUBSPOT_PROP.passport_first_page] = firstFileId("passport_first_page") || undefined;
-patchProps[HUBSPOT_PROP.student_picture] = firstFileId("student_picture") || undefined;
-patchProps[HUBSPOT_PROP.high_school_transcripts] = uploaded.find((x) => x.fieldname === "high_school_transcripts")?.id || undefined;
-patchProps[HUBSPOT_PROP.entrance_exam] = firstFileId("entrance_exam") || undefined;
-patchProps[HUBSPOT_PROP.english_exam] = firstFileId("english_exam") || undefined;
-patchProps[HUBSPOT_PROP.personal_statement] = firstFileId("personal_statement") || undefined;
+patchProps[HUBSPOT_PROP.passport_first_page] = `[View Passport](${firstFileUrl("passport_first_page")})`;
+patchProps[HUBSPOT_PROP.student_picture] = firstFileUrl("student_picture") || undefined;
+patchProps[HUBSPOT_PROP.high_school_transcripts] =
+  uploaded.find((x) => x.fieldname === "high_school_transcripts")?.url || undefined;
 
-const supportFileIds = uploaded
+patchProps[HUBSPOT_PROP.entrance_exam] = firstFileUrl("entrance_exam") || undefined;
+patchProps[HUBSPOT_PROP.english_exam] = firstFileUrl("english_exam") || undefined;
+patchProps[HUBSPOT_PROP.personal_statement] = firstFileUrl("personal_statement") || undefined;
+
+// multiple supporting docs
+const supportFileUrls = uploaded
   .filter((x) => x.fieldname === "supporting_documents")
-  .map((x) => x.id)
+  .map((x) => x.url)
   .filter(Boolean);
 
-HUBSPOT_PROP.additional_docs.forEach((prop, index) => {
-  if (supportFileIds[index]) patchProps[prop] = supportFileIds[index];
-});
+patchProps[HUBSPOT_PROP.supporting_documents] = supportFileUrls.join("\n") || undefined;
 
 console.log("PATCHING WITH:", JSON.stringify(patchProps, null, 2));
 await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
