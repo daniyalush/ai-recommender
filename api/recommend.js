@@ -1278,7 +1278,7 @@ async function handleFinalSubmit(fields, files) {
 
 const firstFileUrl = (field) => uploaded.find((x) => x.fieldname === field)?.url || "";
 
-patchProps[HUBSPOT_PROP.passport_first_page] = `[View Passport](${firstFileUrl("passport_first_page")})`;
+patchProps[HUBSPOT_PROP.passport_first_page] = firstFileUrl("passport_first_page") || undefined;
 patchProps[HUBSPOT_PROP.student_picture] = firstFileUrl("student_picture") || undefined;
 patchProps[HUBSPOT_PROP.high_school_transcripts] =
   uploaded.find((x) => x.fieldname === "high_school_transcripts")?.url || undefined;
