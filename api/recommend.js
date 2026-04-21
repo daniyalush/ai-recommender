@@ -846,22 +846,22 @@ async function createOrUpdateContactByEmail(properties) {
   return { id: created.id, properties: created.properties || {}, created: true };
 }
 
-async function uploadFileToHubSpot(file, form) {
+async function uploadFileToHubSpot(file, formFields) {
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN || process.env.HUBSPOT_TOKEN;
   if (!token) throw new Error("Missing HubSpot token");
 
-  const form = new FormData();
-  const cleanName = buildCleanFileName(file.fieldname, file.filename, form);
+  const cleanName = buildCleanFileName(file.fieldname, file.filename, formFields);
 
-form.append("file", new Blob([file.buffer], { type: file.mimeType }), cleanName);
-form.append("fileName", cleanName);
-  form.append("folderPath", "/ai-recommender");
-  form.append("options", JSON.stringify({ access: "PUBLIC_NOT_INDEXABLE" }));
+  const uploadForm = new FormData();
+  uploadForm.append("file", new Blob([file.buffer], { type: file.mimeType }), cleanName);
+  uploadForm.append("fileName", cleanName);
+  uploadForm.append("folderPath", "/ai-recommender");
+  uploadForm.append("options", JSON.stringify({ access: "PUBLIC_NOT_INDEXABLE" }));
 
   const response = await fetch(`${HUBSPOT_BASE}/files/v3/files`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
-    body: form,
+    body: uploadForm,
   });
 
   const text = await response.text();
@@ -878,17 +878,16 @@ form.append("fileName", cleanName);
   }
 
   const fileId = data.id;
+  if (!fileId) {
+    throw new Error("HubSpot did not return a file ID: " + JSON.stringify(data));
+  }
 
-if (!fileId) {
-  throw new Error("HubSpot did not return a file ID: " + JSON.stringify(data));
-}
-
-return {
-  id: String(fileId),
-  url: data.url || data.defaultHostingUrl || "",
-  name: file.filename,
-  fieldname: file.fieldname,
-};
+  return {
+    id: String(fileId),
+    url: data.url || data.defaultHostingUrl || "",
+    name: cleanName,
+    fieldname: file.fieldname,
+  };
 }
 
 function setIfPresent(obj, key, value) {
@@ -1343,13 +1342,13 @@ async function handleFinalSubmit(fields, files) {
   return buildRecommendationResponse(recommendations, student, majorsParsed.selected);
 }
 
-function buildCleanFileName(fieldname, originalName, form) {
+function buildCleanFileName(fieldname, originalName, formFields) {
   const ext = originalName.includes(".")
     ? "." + originalName.split(".").pop().toLowerCase()
     : "";
 
-  const firstName = normalizeText(form.first_name);
-  const lastName = normalizeText(form.last_name);
+  const firstName = normalizeText(formFields.first_name);
+  const lastName = normalizeText(formFields.last_name);
   const fullName = [firstName, lastName].filter(Boolean).join(" ") || "Student";
 
   const FIELD_LABELS = {
