@@ -19,7 +19,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
 const HUBSPOT_BASE = "https://api.hubapi.com";
 const OPENAI_BASE = "https://api.openai.com/v1";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.4";
-const SOURCE_NEW_VALUE = "TED DIRECT 2024";
+const SOURCE_NEW_VALUE = "ai-recommender";
 const NOTE_TO_CONTACT_ASSOCIATION_TYPE_ID = 202;
 
 const HUBSPOT_PROP = {
@@ -1255,7 +1255,7 @@ async function handleGetMoreRecommendations(body) {
 
 async function handleFinalSubmit(fields, files) {
   const groupedFiles = groupFilesByField(files);
-  // validateRequiredFinalFields(fields, groupedFiles);
+  validateRequiredFinalFields(fields, groupedFiles);
 
   const existing = await findContactByEmail(fields.email, [HUBSPOT_PROP.intended_program_single_field]);
   const existingMajors = existing?.properties?.[HUBSPOT_PROP.intended_program_single_field] || "";
@@ -1264,55 +1264,47 @@ async function handleFinalSubmit(fields, files) {
   const contactId = contact.id;
 
   const uploaded = [];
-  // for (const file of files) {
-  //   const uploadedFile = await uploadFileToHubSpot(file);
-  //   uploaded.push(uploadedFile);
-  // }
+  for (const file of files) {
+    const uploadedFile = await uploadFileToHubSpot(file);
+    uploaded.push(uploadedFile);
+  }
 
-  await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
+  const patchProps = {
+  [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
+};
+
+const firstFileId = (field) => uploaded.find((x) => x.fieldname === field)?.id || "";
+
+patchProps[HUBSPOT_PROP.passport_first_page] = firstFileId("passport_first_page") || undefined;
+patchProps[HUBSPOT_PROP.student_picture] = firstFileId("student_picture") || undefined;
+patchProps[HUBSPOT_PROP.high_school_transcripts] =
+  uploaded
+    .filter((x) => x.fieldname === "high_school_transcripts")
+    .map((x) => x.id)
+    .filter(Boolean)
+    .join(";") || undefined;
+patchProps[HUBSPOT_PROP.entrance_exam] = firstFileId("entrance_exam") || undefined;
+patchProps[HUBSPOT_PROP.english_exam] = firstFileId("english_exam") || undefined;
+patchProps[HUBSPOT_PROP.personal_statement] = firstFileId("personal_statement") || undefined;
+
+const supportFileIds = uploaded
+  .filter((x) => x.fieldname === "supporting_documents")
+  .map((x) => x.id)
+  .filter(Boolean);
+
+HUBSPOT_PROP.additional_docs.forEach((prop, index) => {
+  if (supportFileIds[index]) patchProps[prop] = supportFileIds[index];
+});
+
+await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
   method: "PATCH",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    properties: {
-      [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
-    },
+    properties: Object.fromEntries(
+      Object.entries(patchProps).filter(([, v]) => v !== undefined)
+    ),
   }),
 });
-
-  // const patchProps = {
-  //   [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
-  // };
-
-  // const firstFileId = (field) => uploaded.find((x) => x.fieldname === field)?.id || "";
-
-  // patchProps[HUBSPOT_PROP.passport_first_page] = firstFileId("passport_first_page") || undefined;
-  // patchProps[HUBSPOT_PROP.student_picture] = firstFileId("student_picture") || undefined;
-  // patchProps[HUBSPOT_PROP.high_school_transcripts] =
-  //   uploaded
-  //     .filter((x) => x.fieldname === "high_school_transcripts")
-  //     .map((x) => x.id)
-  //     .filter(Boolean)
-  //     .join(";") || undefined;
-  // patchProps[HUBSPOT_PROP.entrance_exam] = firstFileId("entrance_exam") || undefined;
-  // patchProps[HUBSPOT_PROP.english_exam] = firstFileId("english_exam") || undefined;
-  // patchProps[HUBSPOT_PROP.personal_statement] = firstFileId("personal_statement") || undefined;
-
-  // const supportFileIds = uploaded
-  //   .filter((x) => x.fieldname === "supporting_documents")
-  //   .map((x) => x.id)
-  //   .filter(Boolean);
-
-  // HUBSPOT_PROP.additional_docs.forEach((prop, index) => {
-  //   if (supportFileIds[index]) patchProps[prop] = supportFileIds[index];
-  // });
-
-  // await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
-  //   method: "PATCH",
-  //   headers: { "Content-Type": "application/json" },
-  //   body: JSON.stringify({
-  //     properties: Object.fromEntries(Object.entries(patchProps).filter(([, v]) => v !== undefined)),
-  //   }),
-  // });
 
   // const verification = await runDocumentVerification(fields, files);
   // const advisorNote = buildAdvisorNote(fields, uploaded, verification);
