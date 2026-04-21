@@ -764,6 +764,8 @@ async function hubspotRequest(pathname, options = {}) {
   });
 
   const text = await response.text();
+  console.log("UPLOAD RAW RESPONSE:", text);
+  
   let data = {};
 
   try {
@@ -879,12 +881,18 @@ async function uploadFileToHubSpot(file) {
     throw new Error(data.message || `HubSpot file upload failed: ${response.status}`);
   }
 
-  return {
-    id: String(data.id || data.objects?.[0]?.id || ""),
-    url: data.url || data.defaultHostingUrl || data.objects?.[0]?.url || "",
-    name: file.filename,
-    fieldname: file.fieldname,
-  };
+  const fileId = data.id;
+
+if (!fileId) {
+  throw new Error("HubSpot did not return a file ID: " + JSON.stringify(data));
+}
+
+return {
+  id: String(fileId),
+  url: data.url || data.defaultHostingUrl || "",
+  name: file.filename,
+  fieldname: file.fieldname,
+};
 }
 
 function setIfPresent(obj, key, value) {
@@ -1278,12 +1286,7 @@ const firstFileId = (field) => uploaded.find((x) => x.fieldname === field)?.id |
 
 patchProps[HUBSPOT_PROP.passport_first_page] = firstFileId("passport_first_page") || undefined;
 patchProps[HUBSPOT_PROP.student_picture] = firstFileId("student_picture") || undefined;
-patchProps[HUBSPOT_PROP.high_school_transcripts] =
-  uploaded
-    .filter((x) => x.fieldname === "high_school_transcripts")
-    .map((x) => x.id)
-    .filter(Boolean)
-    .join(";") || undefined;
+patchProps[HUBSPOT_PROP.high_school_transcripts] = uploaded.find((x) => x.fieldname === "high_school_transcripts")?.id || undefined;
 patchProps[HUBSPOT_PROP.entrance_exam] = firstFileId("entrance_exam") || undefined;
 patchProps[HUBSPOT_PROP.english_exam] = firstFileId("english_exam") || undefined;
 patchProps[HUBSPOT_PROP.personal_statement] = firstFileId("personal_statement") || undefined;
@@ -1297,6 +1300,7 @@ HUBSPOT_PROP.additional_docs.forEach((prop, index) => {
   if (supportFileIds[index]) patchProps[prop] = supportFileIds[index];
 });
 
+console.log("PATCHING WITH:", JSON.stringify(patchProps, null, 2));
 await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
   method: "PATCH",
   headers: { "Content-Type": "application/json" },
