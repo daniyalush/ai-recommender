@@ -846,13 +846,15 @@ async function createOrUpdateContactByEmail(properties) {
   return { id: created.id, properties: created.properties || {}, created: true };
 }
 
-async function uploadFileToHubSpot(file) {
+async function uploadFileToHubSpot(file, form) {
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN || process.env.HUBSPOT_TOKEN;
   if (!token) throw new Error("Missing HubSpot token");
 
   const form = new FormData();
-  form.append("file", new Blob([file.buffer], { type: file.mimeType }), file.filename);
-  form.append("fileName", file.filename);
+  const cleanName = buildCleanFileName(file.fieldname, file.filename, form);
+
+form.append("file", new Blob([file.buffer], { type: file.mimeType }), cleanName);
+form.append("fileName", cleanName);
   form.append("folderPath", "/ai-recommender");
   form.append("options", JSON.stringify({ access: "PUBLIC_NOT_INDEXABLE" }));
 
@@ -921,15 +923,25 @@ function buildContactPropertiesFromForm(form, existingMajorsValue = "") {
   return properties;
 }
 
-async function createHubSpotNoteForContact(contactId, bodyText) {
+async function createHubSpotNoteForContact(contactId, bodyText, attachmentIds = []) {
+  const cleanAttachmentIds = attachmentIds
+    .map((id) => normalizeText(id))
+    .filter(Boolean);
+
+  const properties = {
+    hs_timestamp: new Date().toISOString(),
+    hs_note_body: bodyText,
+  };
+
+  if (cleanAttachmentIds.length) {
+    properties.hs_attachment_ids = cleanAttachmentIds.join(";");
+  }
+
   await hubspotRequest("/crm/v3/objects/notes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      properties: {
-        hs_timestamp: new Date().toISOString(),
-        hs_note_body: bodyText,
-      },
+      properties,
       associations: [
         {
           to: { id: contactId },
@@ -1268,47 +1280,50 @@ async function handleFinalSubmit(fields, files) {
 
   const uploaded = [];
   for (const file of files) {
-    const uploadedFile = await uploadFileToHubSpot(file);
+    const uploadedFile = await uploadFileToHubSpot(file, fields);
     uploaded.push(uploadedFile);
   }
 
   const patchProps = {
-  [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
-};
+    [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
+  };
 
-const firstFileUrl = (field) => uploaded.find((x) => x.fieldname === field)?.url || "";
+  const firstFileUrl = (field) => uploaded.find((x) => x.fieldname === field)?.url || "";
 
-patchProps[HUBSPOT_PROP.passport_first_page] = firstFileUrl("passport_first_page") || undefined;
-patchProps[HUBSPOT_PROP.student_picture] = firstFileUrl("student_picture") || undefined;
-patchProps[HUBSPOT_PROP.high_school_transcripts] =
-  uploaded.find((x) => x.fieldname === "high_school_transcripts")?.url || undefined;
+  patchProps[HUBSPOT_PROP.passport_first_page] = firstFileUrl("passport_first_page") || undefined;
+  patchProps[HUBSPOT_PROP.student_picture] = firstFileUrl("student_picture") || undefined;
+  patchProps[HUBSPOT_PROP.high_school_transcripts] =
+    uploaded.find((x) => x.fieldname === "high_school_transcripts")?.url || undefined;
 
-patchProps[HUBSPOT_PROP.entrance_exam] = firstFileUrl("entrance_exam") || undefined;
-patchProps[HUBSPOT_PROP.english_exam] = firstFileUrl("english_exam") || undefined;
-patchProps[HUBSPOT_PROP.personal_statement] = firstFileUrl("personal_statement") || undefined;
+  patchProps[HUBSPOT_PROP.entrance_exam] = firstFileUrl("entrance_exam") || undefined;
+  patchProps[HUBSPOT_PROP.english_exam] = firstFileUrl("english_exam") || undefined;
+  patchProps[HUBSPOT_PROP.personal_statement] = firstFileUrl("personal_statement") || undefined;
 
-// multiple supporting docs
-const supportFileUrls = uploaded
-  .filter((x) => x.fieldname === "supporting_documents")
-  .map((x) => x.url)
-  .filter(Boolean);
+  const supportFileUrls = uploaded
+    .filter((x) => x.fieldname === "supporting_documents")
+    .map((x) => x.url)
+    .filter(Boolean);
 
-patchProps[HUBSPOT_PROP.supporting_documents] = supportFileUrls.join("\n") || undefined;
+  patchProps[HUBSPOT_PROP.supporting_documents] = supportFileUrls.join("\n") || undefined;
 
-console.log("PATCHING WITH:", JSON.stringify(patchProps, null, 2));
-await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
-  method: "PATCH",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    properties: Object.fromEntries(
-      Object.entries(patchProps).filter(([, v]) => v !== undefined)
-    ),
-  }),
-});
+  await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      properties: Object.fromEntries(
+        Object.entries(patchProps).filter(([, v]) => v !== undefined)
+      ),
+    }),
+  });
 
-  // const verification = await runDocumentVerification(fields, files);
-  // const advisorNote = buildAdvisorNote(fields, uploaded, verification);
-  // await createHubSpotNoteForContact(contactId, advisorNote);
+  const verification = await runDocumentVerification(fields, files);
+  const advisorNote = buildAdvisorNote(fields, uploaded, verification);
+
+  await createHubSpotNoteForContact(
+    contactId,
+    advisorNote,
+    uploaded.map((f) => f.id)
+  );
 
   const latestContact = await findContactByEmail(fields.email, [HUBSPOT_PROP.intended_program_single_field]);
   const majorsParsed = parseMajorsField(
@@ -1326,6 +1341,29 @@ await hubspotRequest(`/crm/v3/objects/contacts/${contactId}`, {
 
   const recommendations = scorePrograms(student);
   return buildRecommendationResponse(recommendations, student, majorsParsed.selected);
+}
+
+function buildCleanFileName(fieldname, originalName, form) {
+  const ext = originalName.includes(".")
+    ? "." + originalName.split(".").pop().toLowerCase()
+    : "";
+
+  const firstName = normalizeText(form.first_name);
+  const lastName = normalizeText(form.last_name);
+  const fullName = [firstName, lastName].filter(Boolean).join(" ") || "Student";
+
+  const FIELD_LABELS = {
+    passport_first_page: "Passport",
+    student_picture: "Student Photo",
+    high_school_transcripts: "Transcripts",
+    entrance_exam: "Entrance Exam",
+    english_exam: "English Exam",
+    personal_statement: "Personal Statement",
+    supporting_documents: "Supporting Document",
+  };
+
+  const label = FIELD_LABELS[fieldname] || "Document";
+  return `${fullName} - ${label}${ext}`;
 }
 
 function publicErrorMessage(error) {
