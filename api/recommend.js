@@ -1270,9 +1270,6 @@ async function handleFinalSubmit(fields, files) {
     uploaded.push(uploadedFile);
   }
 
-  console.log("Uploaded files:", JSON.stringify(uploaded, null, 2));
-  console.log("Patch props:", JSON.stringify(patchProps, null, 2));
-
   const patchProps = {
   [HUBSPOT_PROP.source_new]: SOURCE_NEW_VALUE,
 };
