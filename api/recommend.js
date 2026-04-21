@@ -857,6 +857,7 @@ async function uploadFileToHubSpot(file) {
   const form = new FormData();
   form.append("file", new Blob([file.buffer], { type: file.mimeType }), file.filename);
   form.append("fileName", file.filename);
+  form.append("folderPath", "/ai-recommender");
   form.append("options", JSON.stringify({ access: "PRIVATE" }));
 
   const response = await fetch(`${HUBSPOT_BASE}/files/v3/files`, {
