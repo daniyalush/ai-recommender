@@ -1468,14 +1468,8 @@ async function handleFinalSubmit(fields, files) {
   const passportIdentityCheck = await runPassportIdentityCheck(fields, passportFile);
 
 if (!passportIdentityCheck.passed) {
-  const safeReason =
-    passportIdentityCheck.reason &&
-    passportIdentityCheck.reason.toLowerCase().includes("match")
-      ? passportIdentityCheck.reason
-      : null;
-
   throw new Error(
-    safeReason ||
+    passportIdentityCheck.reason ||
       "Your passport details do not match the name or date of birth entered in the form. Please review Step 1 and upload the correct passport."
   );
 }
