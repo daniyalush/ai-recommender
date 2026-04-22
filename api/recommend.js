@@ -1000,6 +1000,200 @@ function extractResponseText(responseJson) {
   return parts.join("\n").trim();
 }
 
+function parseDateToIso(value) {
+  const raw = normalizeText(value);
+  if (!raw) return "";
+
+  const cleaned = raw.replace(/[,]/g, " ").replace(/\s+/g, " ").trim();
+
+  const direct = new Date(cleaned);
+  if (!Number.isNaN(direct.getTime())) {
+    const y = direct.getFullYear();
+    const m = String(direct.getMonth() + 1).padStart(2, "0");
+    const d = String(direct.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  const parts = cleaned.match(/(\d{1,4})[\/.\-\s](\d{1,2})[\/.\-\s](\d{1,4})/);
+  if (!parts) return "";
+
+  let a = Number(parts[1]);
+  let b = Number(parts[2]);
+  let c = Number(parts[3]);
+
+  let year;
+  let month;
+  let day;
+
+  if (String(a).length === 4) {
+    year = a;
+    month = b;
+    day = c;
+  } else if (String(c).length === 4) {
+    year = c;
+
+    // Prefer day-month-year for passport-style dates, but tolerate month-day-year
+    if (a > 12) {
+      day = a;
+      month = b;
+    } else if (b > 12) {
+      day = b;
+      month = a;
+    } else {
+      day = a;
+      month = b;
+    }
+  } else {
+    return "";
+  }
+
+  if (!year || !month || !day) return "";
+  if (month < 1 || month > 12 || day < 1 || day > 31) return "";
+
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function normalizePersonName(value) {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizePersonName(value) {
+  return normalizePersonName(value).split(" ").filter(Boolean);
+}
+
+function namesMatchLoosely(formFullName, passportFullName) {
+  const formTokens = tokenizePersonName(formFullName);
+  const passportTokens = tokenizePersonName(passportFullName);
+
+  if (!formTokens.length || !passportTokens.length) return false;
+
+  const formSet = new Set(formTokens);
+  const passportSet = new Set(passportTokens);
+
+  const overlap = formTokens.filter((token) => passportSet.has(token)).length;
+  const surnameMatch =
+    formTokens.length && passportTokens.length
+      ? formTokens[formTokens.length - 1] === passportTokens[passportTokens.length - 1]
+      : false;
+
+  const overlapRatio = overlap / formTokens.length;
+
+  if (surnameMatch && overlapRatio >= 0.5) return true;
+  if (overlapRatio >= 0.75) return true;
+
+  const formJoined = formTokens.join(" ");
+  const passportJoined = passportTokens.join(" ");
+
+  if (passportJoined.includes(formJoined) || formJoined.includes(passportJoined)) return true;
+
+  return false;
+}
+
+async function runPassportIdentityCheck(form, passportFile) {
+  if (!passportFile) {
+    return {
+      passed: false,
+      reason: "Passport file is missing.",
+      passport_name: "",
+      passport_date_of_birth: "",
+    };
+  }
+
+  const input = [
+    {
+      role: "system",
+      content: [
+        {
+          type: "input_text",
+          text: [
+            "You extract identity details from a passport image or passport PDF text.",
+            "Return strict JSON only.",
+            JSON.stringify(
+              {
+                passport_full_name: "",
+                date_of_birth: "",
+                confidence: "HIGH | MEDIUM | LOW",
+                notes: "",
+              },
+              null,
+              2
+            ),
+          ].join("\n"),
+        },
+      ],
+    },
+  ];
+
+  const extractedText = await extractTextFromFile(passportFile);
+
+  if (extractedText) {
+    input.push({
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: `Passport text:\n${extractedText.slice(0, 12000)}`,
+        },
+      ],
+    });
+  } else if (passportFile.mimeType.startsWith("image/")) {
+    input.push({
+      role: "user",
+      content: [
+        { type: "input_text", text: "Extract the passport holder full name and date of birth from this passport image." },
+        { type: "input_image", image_url: fileToDataUrl(passportFile), detail: "high" },
+      ],
+    });
+  } else {
+    return {
+      passed: false,
+      reason: "Passport could not be read.",
+      passport_name: "",
+      passport_date_of_birth: "",
+    };
+  }
+
+  const response = await openaiRequest({
+    model: OPENAI_MODEL,
+    input,
+    text: { format: { type: "json_object" } },
+  });
+
+  const parsed = JSON.parse(extractResponseText(response) || "{}");
+
+  const passportName = normalizeText(parsed.passport_full_name);
+  const passportDob = parseDateToIso(parsed.date_of_birth);
+  const formFullName = normalizeText([form.first_name, form.last_name].filter(Boolean).join(" "));
+  const formDob = parseDateToIso(form.date_of_birth);
+
+  const nameOk = namesMatchLoosely(formFullName, passportName);
+  const dobOk = !!formDob && !!passportDob && formDob === passportDob;
+
+  return {
+    passed: nameOk && dobOk,
+    name_ok: nameOk,
+    dob_ok: dobOk,
+    passport_name: passportName,
+    passport_date_of_birth: passportDob,
+    form_name: formFullName,
+    form_date_of_birth: formDob,
+    confidence: normalizeText(parsed.confidence) || "LOW",
+    notes: normalizeText(parsed.notes),
+    reason:
+      nameOk && dobOk
+        ? ""
+        : !nameOk && !dobOk
+          ? "Passport name and date of birth do not match the submitted form."
+          : !nameOk
+            ? "Passport name does not match the submitted form."
+            : "Passport date of birth does not match the submitted form.",
+  };
+}
+
 async function runDocumentVerification(form, files) {
   if (!files.length) {
     return {
@@ -1269,6 +1463,22 @@ async function handleGetMoreRecommendations(body) {
 async function handleFinalSubmit(fields, files) {
   const groupedFiles = groupFilesByField(files);
   validateRequiredFinalFields(fields, groupedFiles);
+
+  const passportFile = (groupedFiles.get("passport_first_page") || [])[0];
+  const passportIdentityCheck = await runPassportIdentityCheck(fields, passportFile);
+
+if (!passportIdentityCheck.passed) {
+  const safeReason =
+    passportIdentityCheck.reason &&
+    passportIdentityCheck.reason.toLowerCase().includes("match")
+      ? passportIdentityCheck.reason
+      : null;
+
+  throw new Error(
+    safeReason ||
+      "Your passport details do not match the name or date of birth entered in the form. Please review Step 1 and upload the correct passport."
+  );
+}
 
   const existing = await findContactByEmail(fields.email, [HUBSPOT_PROP.intended_program_single_field]);
   const existingMajors = existing?.properties?.[HUBSPOT_PROP.intended_program_single_field] || "";
