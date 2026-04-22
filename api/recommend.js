@@ -1468,9 +1468,17 @@ async function handleFinalSubmit(fields, files) {
   const passportIdentityCheck = await runPassportIdentityCheck(fields, passportFile);
 
 if (!passportIdentityCheck.passed) {
-  throw new Error(
-      "Your passport details do not match the name or date of birth entered in the form. Please review Step 1 and upload the correct passport."
-  );
+  let passportErrorMessage = "Your passport details do not match the name or date of birth entered in the form. Please review Step 1 and upload the correct passport.";
+
+  if (!passportIdentityCheck.name_ok && !passportIdentityCheck.dob_ok) {
+    passportErrorMessage = "Your passport name and date of birth do not match the details entered in the form. Please review Step 1 and upload the correct passport.";
+  } else if (!passportIdentityCheck.name_ok) {
+    passportErrorMessage = "The name on the passport does not match the name entered in the form. Please review Step 1 and upload the correct passport.";
+  } else if (!passportIdentityCheck.dob_ok) {
+    passportErrorMessage = "The date of birth on the passport does not match the date of birth entered in the form. Please review Step 1 and upload the correct passport.";
+  }
+
+  throw new Error(passportErrorMessage);
 }
 
   const existing = await findContactByEmail(fields.email, [HUBSPOT_PROP.intended_program_single_field]);
@@ -1568,7 +1576,8 @@ function buildCleanFileName(fieldname, originalName, formFields) {
 }
 
 function publicErrorMessage(error) {
-  return String(error?.message || "Something went wrong. Please try again.");
+  const message = normalizeText(error?.message);
+  return message || "Something went wrong. Please try again.";
 }
 
 export default async function handler(req, res) {
@@ -1647,19 +1656,21 @@ return res.status(400).json({ error: "Unsupported JSON action" });
     console.error("Backend error:", error?.message || error);
 
     const message = publicErrorMessage(error);
-    const status =
-      message.includes("Please complete") ||
-      message.includes("Please upload") ||
-      message.includes("invalid") ||
-      message.includes("could not find your profile") ||
-      message.includes("Origin not allowed")
-        ? 400
-        : 500;
+    const lowerMessage = message.toLowerCase();
 
-    return res.status(status).json({
-  error: status === 500
-    ? "Something went wrong. Please try again."
-    : message
-});
+const status =
+  lowerMessage.includes("please complete") ||
+  lowerMessage.includes("please upload") ||
+  lowerMessage.includes("invalid") ||
+  lowerMessage.includes("could not find your profile") ||
+  lowerMessage.includes("origin not allowed") ||
+  lowerMessage.includes("passport") ||
+  lowerMessage.includes("date of birth") ||
+  lowerMessage.includes("does not match") ||
+  lowerMessage.includes("do not match")
+    ? 400
+    : 500;
+
+    return res.status(status).json({ error: message });
   }
 }
