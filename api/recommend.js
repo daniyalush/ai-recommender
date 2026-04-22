@@ -758,7 +758,6 @@ async function hubspotRequest(pathname, options = {}) {
   });
 
   const text = await response.text();
-  console.log("UPLOAD RAW RESPONSE:", text);
   
   let data = {};
 
@@ -769,7 +768,7 @@ async function hubspotRequest(pathname, options = {}) {
   }
 
   if (!response.ok) {
-    console.error("HubSpot error response:", JSON.stringify(data, null, 2));
+    console.error("HubSpot request failed:", data?.message || "Unknown error");
 
     const detailedMessage =
       data?.message ||
@@ -1442,7 +1441,7 @@ if (action === "get_more_recommendations") {
 
 return res.status(400).json({ error: "Unsupported JSON action" });
   } catch (error) {
-    console.error(error);
+    console.error("Backend error:", error?.message || error);
 
     const message = publicErrorMessage(error);
     const status =
@@ -1454,6 +1453,10 @@ return res.status(400).json({ error: "Unsupported JSON action" });
         ? 400
         : 500;
 
-    return res.status(status).json({ error: message });
+    return res.status(status).json({
+  error: status === 500
+    ? "Something went wrong. Please try again."
+    : message
+});
   }
 }
