@@ -1469,7 +1469,6 @@ async function handleFinalSubmit(fields, files) {
 
 if (!passportIdentityCheck.passed) {
   throw new Error(
-    passportIdentityCheck.reason ||
       "Your passport details do not match the name or date of birth entered in the form. Please review Step 1 and upload the correct passport."
   );
 }
